@@ -10,6 +10,7 @@ export function ScanForm() {
   const [result, setResult] = useState<ScanResult | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setLoading(true); setError(""); setResult(null);
@@ -20,6 +21,22 @@ export function ScanForm() {
       setResult(data);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Le diagnostic a échoué."); }
     finally { setLoading(false); }
+  }
+
+  async function exportReport() {
+    if (!result) return;
+    setExporting(true); setError("");
+    try {
+      const response = await fetch("/api/report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(result) });
+      if (!response.ok) { const data = await response.json(); throw new Error(data.error ?? "L’export du rapport a échoué."); }
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = blobUrl;
+      link.download = response.headers.get("content-disposition")?.match(/filename="([^"]+)"/)?.[1] ?? "rapport-africheck.pdf";
+      link.click();
+      URL.revokeObjectURL(blobUrl);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "L’export du rapport a échoué."); }
+    finally { setExporting(false); }
   }
 
   const summary = result ? findingSummary(result.findings) : null;
@@ -57,6 +74,7 @@ export function ScanForm() {
                 <div><p>{finding.observation}</p><strong>Recommandation</strong><p>{finding.recommendation}</p></div>
               </details>)}
             </div>
+            <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting}>{exporting ? "Création du PDF…" : "Télécharger le rapport PDF"}<span aria-hidden>↓</span></button>
           </div>
         </section>
       )}

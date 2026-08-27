@@ -17,6 +17,7 @@ AfriCheck est un diagnostic automatisé et non intrusif de la configuration de s
 - détection du contenu mixte dans le HTML initial ;
 - validation de la qualité minimale de HSTS, CSP, Referrer-Policy et des cookies ;
 - score transparent sur 100 et résultat détaillé en français.
+- export d’un rapport PDF paginé avec priorités, recommandations et avertissement juridique.
 
 Les scans de ports, l’exploitation de vulnérabilités et les affirmations de CVE ne font volontairement pas partie de ce MVP.
 
