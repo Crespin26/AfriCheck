@@ -50,6 +50,8 @@ Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main
 
 Chaque réponse de l’API expose `X-Request-Id`. Les événements sont écrits en JSON avec la durée, le résultat et un code d’erreur stable, sans URL cible ni adresse IP brute. Les secrets doivent être injectés par la plateforme de déploiement et ne doivent jamais être ajoutés au dépôt.
 
+AfriCheck protège également ses propres pages avec une CSP stricte à nonce unique, ainsi qu’avec HSTS en production, anti-clickjacking, `nosniff`, une politique de référent restrictive et une politique de permissions minimale.
+
 ## Architecture
 
 - `src/app` : interface et route API `POST /api/scan` ;

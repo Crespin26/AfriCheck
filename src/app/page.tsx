@@ -1,4 +1,5 @@
 import { ScanForm } from "@/components/scan-form";
+import { connection } from "next/server";
 import styles from "./page.module.css";
 
 const checks = [
@@ -8,7 +9,8 @@ const checks = [
   ["Pages & formulaires", "Actions non chiffrées et contenu mixte"],
 ];
 
-export default function Home() {
+export default async function Home() {
+  await connection();
   return (
     <main>
       <nav className={styles.nav} aria-label="Navigation principale">
