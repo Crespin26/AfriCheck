@@ -45,6 +45,13 @@ describe("analyzeResponse", () => {
     expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("fail");
     expect(findings.find((item) => item.id === "cookies")?.status).toBe("warning");
   });
+  it("distingue les ressources mixtes des simples liens de navigation", () => {
+    const safe = analyzeResponse(new URL("https://example.com"), response({ body: '<a href="http://example.net">Documentation</a>' }));
+    expect(safe.find((item) => item.id === "mixed-content")?.status).toBe("pass");
+    const unsafe = analyzeResponse(new URL("https://example.com"), response({ body: '<img src=http://cdn.example.com/a.png srcset="https://cdn.example.com/a.png 1x, http://cdn.example.com/a@2x.png 2x"><style>.hero{background:url(http://cdn.example.com/bg.png)}</style><link href="http://cdn.example.com/app.css">' }));
+    expect(unsafe.find((item) => item.id === "mixed-content")).toMatchObject({ status: "fail", points: 0 });
+    expect(unsafe.find((item) => item.id === "mixed-content")?.observation).toContain("4 ressource(s)");
+  });
   it("considère tous les formulaires d’une page HTTP comme non chiffrés", () => {
     const headers = response().headers;
     headers.delete("strict-transport-security");

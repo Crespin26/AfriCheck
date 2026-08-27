@@ -15,6 +15,39 @@ export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "
 
 function add(findings: Finding[], finding: Finding) { findings.push(finding); }
 
+function attributeValues(tag: string, attribute: string): string[] {
+  const expression = new RegExp(`\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "gi");
+  return [...tag.matchAll(expression)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
+}
+
+function countMixedContent(html: string, baseUrl: URL): number {
+  const isHttp = (target: string) => {
+    try { return new URL(target, baseUrl).protocol === "http:"; }
+    catch { return false; }
+  };
+  let count = 0;
+  const countAttribute = (tagPattern: RegExp, attribute: string) => {
+    for (const [tag] of html.matchAll(tagPattern)) count += attributeValues(tag, attribute).filter(isHttp).length;
+  };
+  countAttribute(/<(?:script|img|iframe|audio|video|source|track|embed|input)\b[^>]*>/gi, "src");
+  countAttribute(/<link\b[^>]*>/gi, "href");
+  countAttribute(/<object\b[^>]*>/gi, "data");
+  countAttribute(/<video\b[^>]*>/gi, "poster");
+  for (const [tag] of html.matchAll(/<(?:img|source)\b[^>]*>/gi)) {
+    for (const sourceSet of attributeValues(tag, "srcset")) count += [...sourceSet.matchAll(/(?:^|,)\s*(http:\/\/[^\s,]+)/gi)].length;
+  }
+  const cssFragments = [
+    ...[...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)].map((match) => match[1]),
+    ...[...html.matchAll(/<[^>]+>/g)].flatMap(([tag]) => attributeValues(tag, "style")),
+  ];
+  for (const css of cssFragments) {
+    for (const match of css.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)/gi)) {
+      if (isHttp(match[1] ?? match[2] ?? match[3] ?? "")) count += 1;
+    }
+  }
+  return count;
+}
+
 function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
   if (!https) return { id: "tls", title: "Certificat TLS", status: "fail", points: 0, maxPoints: 10, observation: "Aucun certificat TLS n’est utilisé.", recommendation: "Installez un certificat TLS reconnu et configurez son renouvellement automatique." };
   const expiry = tls?.validTo ? new Date(tls.validTo) : undefined;
@@ -75,7 +108,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
     recommendation: insecureForms ? "Servez la page et la destination de chaque formulaire exclusivement via HTTPS." : "Vérifiez également les formulaires chargés dynamiquement.",
   });
 
-  const mixed = https ? [...html.matchAll(/(?:src|href)\s*=\s*["']http:\/\/[^"']+["']/gi)].length : 0;
+  const mixed = https ? countMixedContent(html, response.finalUrl) : 0;
   add(findings, { id: "mixed-content", title: "Contenu mixte", status: mixed ? "fail" : "pass", points: mixed ? 0 : 10, maxPoints: 10, observation: mixed ? `${mixed} ressource(s) HTTP référencée(s) depuis la page HTTPS.` : "Aucune ressource HTTP explicite détectée dans le HTML initial.", recommendation: mixed ? "Servez toutes les images, scripts et feuilles de style via HTTPS." : "Vérifiez aussi les ressources injectées dynamiquement." });
   add(findings, technologyExposureFinding(response.headers, html));
   return findings;
