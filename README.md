@@ -37,7 +37,11 @@ Ouvrir ensuite [http://localhost:3000](http://localhost:3000).
 npm run lint
 npm test
 npm run build
+# ou toutes les portes de qualité :
+npm run ci
 ```
+
+Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main`. CodeQL analyse également le code TypeScript, tandis que Dependabot propose les mises à jour npm et GitHub Actions.
 
 ## Architecture
 
