@@ -2,10 +2,13 @@ import { afterEach, describe, expect, it } from "vitest";
 import { GET } from "./route";
 
 const originalKey = process.env.LOG_HASH_KEY;
+const originalDomainKey = process.env.DOMAIN_VERIFICATION_KEY;
 
 afterEach(() => {
   if (originalKey === undefined) delete process.env.LOG_HASH_KEY;
   else process.env.LOG_HASH_KEY = originalKey;
+  if (originalDomainKey === undefined) delete process.env.DOMAIN_VERIFICATION_KEY;
+  else process.env.DOMAIN_VERIFICATION_KEY = originalDomainKey;
 });
 
 describe("GET /api/ready", () => {
@@ -20,5 +23,11 @@ describe("GET /api/ready", () => {
     const response = await GET();
     expect(response.status).toBe(503);
     await expect(response.json()).resolves.toMatchObject({ status: "not_ready", checks: { configuration: "error" } });
+  });
+  it("retire l’instance du trafic quand la clé de domaine est faible", async () => {
+    process.env.DOMAIN_VERIFICATION_KEY = "short";
+    const response = await GET();
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({ status: "not_ready", checks: { domainVerification: "error" } });
   });
 });
