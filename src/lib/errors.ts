@@ -41,10 +41,19 @@ function isKnownScanError(error: unknown): error is ScanError {
     typeof candidate.message === "string" && typeof candidate.httpStatus === "number" && candidate.httpStatus >= 400 && candidate.httpStatus <= 599;
 }
 
+function isNetworkFailure(error: unknown, seen = new WeakSet<object>(), depth = 0): boolean {
+  if (!error || typeof error !== "object" || depth > 4 || seen.has(error)) return false;
+  seen.add(error);
+  const candidate = error as { code?: unknown; message?: unknown; cause?: unknown; errors?: unknown };
+  const signature = `${typeof candidate.code === "string" ? candidate.code : ""} ${typeof candidate.message === "string" ? candidate.message : ""}`;
+  if (/\b(?:ENOTFOUND|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|ETIMEDOUT|EAI_AGAIN|EACCES|EPERM)\b|fetch failed/i.test(signature)) return true;
+  if (isNetworkFailure(candidate.cause, seen, depth + 1)) return true;
+  return Array.isArray(candidate.errors) && candidate.errors.some((nested) => isNetworkFailure(nested, seen, depth + 1));
+}
+
 export function toPublicError(error: unknown): PublicError {
   if (isKnownScanError(error)) return { code: error.code, ...publicErrors[error.code] };
-  const message = error instanceof Error ? error.message : "";
-  if (/ENOTFOUND|ECONNREFUSED|ECONNRESET|EHOSTUNREACH|fetch failed/i.test(message)) {
+  if (isNetworkFailure(error)) {
     return { code: "UPSTREAM_UNREACHABLE", ...publicErrors.UPSTREAM_UNREACHABLE };
   }
   return { code: "INTERNAL_ERROR", ...publicErrors.INTERNAL_ERROR };

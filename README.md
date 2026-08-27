@@ -57,8 +57,9 @@ Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secre
 1. Le navigateur génère localement un secret aléatoire de 32 octets et envoie seulement son empreinte SHA-256 base64url à `POST /api/domains/challenge` avec l’URL.
 2. L’utilisateur publie le challenge reçu à l’adresse `/.well-known/africheck-verification.txt` de son domaine.
 3. Le navigateur transmet le challenge et son secret à `POST /api/domains/verify`. AfriCheck récupère le fichier avec les protections anti-SSRF du scanner et retourne une preuve signée valable 30 jours.
+4. Lors des visites suivantes, l’interface revalide la preuve et le secret auprès de `POST /api/domains/proof` avant d’afficher le domaine comme vérifié.
 
-La preuve est liée au secret conservé dans le navigateur : copier le fichier public ne permet donc pas à un tiers de revendiquer le domaine. Les deux endpoints sont limités en fréquence et n’acceptent que des corps de petite taille.
+Ce parcours est disponible directement sous chaque rapport de diagnostic. La preuve est liée au secret conservé dans le navigateur : copier le fichier public ou modifier le stockage local ne permet donc pas à un tiers de revendiquer le domaine. Les trois endpoints sont limités en fréquence, n’acceptent que des corps de petite taille et renvoient des réponses non mises en cache.
 
 Chaque réponse de l’API expose `X-Request-Id`. Les événements sont écrits en JSON avec la durée, le résultat et un code d’erreur stable, sans URL cible ni adresse IP brute. Les secrets doivent être injectés par la plateforme de déploiement et ne doivent jamais être ajoutés au dépôt.
 

@@ -16,4 +16,9 @@ describe("toPublicError", () => {
     expect(result).toEqual({ code: "INTERNAL_ERROR", message: "Une erreur interne empêche temporairement le diagnostic.", status: 500 });
   });
   it("classe les erreurs réseau sans exposer leur contenu", () => expect(toPublicError(new Error("connect ECONNREFUSED 10.0.0.1"))).toMatchObject({ code: "UPSTREAM_UNREACHABLE", status: 502 }));
+  it("reconnaît les erreurs réseau imbriquées sans message racine", () => {
+    const nested = Object.assign(new Error("accès refusé au socket"), { code: "EACCES" });
+    const aggregate = new AggregateError([nested], "");
+    expect(toPublicError(aggregate)).toEqual({ code: "UPSTREAM_UNREACHABLE", message: "Impossible de joindre ce site pour le moment.", status: 502 });
+  });
 });

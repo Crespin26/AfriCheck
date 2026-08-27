@@ -3,6 +3,7 @@
 import { FormEvent, useState } from "react";
 import type { ScanResult } from "@/lib/types";
 import { displayHostname, findingSummary, prioritizeFindings, remediationPriorities } from "@/lib/report";
+import { DomainVerification } from "./domain-verification";
 import styles from "./scan-form.module.css";
 
 export function ScanForm() {
@@ -75,6 +76,7 @@ export function ScanForm() {
               </details>)}
             </div>
             <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting}>{exporting ? "Création du PDF…" : "Télécharger le rapport PDF"}<span aria-hidden>↓</span></button>
+            <DomainVerification key={result.finalUrl} targetUrl={result.finalUrl} />
           </div>
         </section>
       )}

@@ -55,6 +55,7 @@ describe("vérification de domaine", () => {
     expect(requestedUrl).toBe("https://example.com/.well-known/africheck-verification.txt");
     expect(result.expiresAt).toBe("2026-09-26T12:00:00.000Z");
     expect(verifyOwnershipProof(result.proof, secret, key, now)).toEqual({ hostname: "example.com", subject });
+    expect(() => verifyOwnershipProof(result.proof, secret, key, now + 30 * 24 * 60 * 60 * 1000)).toThrow(expect.objectContaining({ code: "PROOF_EXPIRED" }));
   });
 
   it("refuse les secrets faibles ou mal formés", () => {
