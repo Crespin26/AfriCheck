@@ -18,6 +18,24 @@ jobs:
     name: Tests, lint and build
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine3.24@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+        env:
+          POSTGRES_DB: africheck_test
+          POSTGRES_USER: africheck
+          POSTGRES_PASSWORD: africheck_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U africheck -d africheck_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://africheck:africheck_test_password@127.0.0.1:5432/africheck_test
+      DATABASE_SSL: "false"
+      HISTORY_RETENTION_DAYS: "30"
     steps:
       - name: Checkout repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -28,6 +46,8 @@ jobs:
           cache: npm
       - name: Install locked dependencies
         run: npm ci
+      - name: Apply database migrations
+        run: npm run db:migrate
       - name: Run quality gates
         run: npm run ci
       - name: Audit production dependencies
@@ -41,5 +61,11 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
       - name: Validate Dockerfile
         run: docker build --check .
+      - name: Validate Compose deployment
+        env:
+          POSTGRES_PASSWORD: ci_database_password
+          DOMAIN_VERIFICATION_KEY: ci-domain-verification-key-at-least-32
+          LOG_HASH_KEY: ci-log-pseudonymization-key-at-least-32
+        run: docker compose config --quiet
       - name: Build container image
         run: docker build --tag africheck:ci .

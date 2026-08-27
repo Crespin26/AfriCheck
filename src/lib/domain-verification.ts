@@ -12,7 +12,7 @@ const BASE64URL_32_BYTES = /^[A-Za-z0-9_-]{43}$/;
 export type DomainVerificationCode =
   | "VERIFICATION_DISABLED" | "INVALID_SUBJECT" | "INVALID_CLIENT_SECRET"
   | "INVALID_CHALLENGE" | "CHALLENGE_EXPIRED" | "PROOF_EXPIRED" | "SUBJECT_MISMATCH"
-  | "VERIFICATION_FILE_MISSING" | "VERIFICATION_FILE_MISMATCH";
+  | "DOMAIN_MISMATCH" | "VERIFICATION_FILE_MISSING" | "VERIFICATION_FILE_MISMATCH";
 
 const publicMessages: Record<DomainVerificationCode, { message: string; status: number }> = {
   VERIFICATION_DISABLED: { message: "La vérification de domaine n’est pas configurée.", status: 503 },
@@ -22,6 +22,7 @@ const publicMessages: Record<DomainVerificationCode, { message: string; status: 
   CHALLENGE_EXPIRED: { message: "Le challenge de vérification a expiré.", status: 410 },
   PROOF_EXPIRED: { message: "La preuve de contrôle du domaine a expiré.", status: 410 },
   SUBJECT_MISMATCH: { message: "Ce challenge appartient à un autre navigateur.", status: 403 },
+  DOMAIN_MISMATCH: { message: "La preuve ne correspond pas au domaine demandé.", status: 403 },
   VERIFICATION_FILE_MISSING: { message: "Le fichier de vérification est introuvable sur ce domaine.", status: 422 },
   VERIFICATION_FILE_MISMATCH: { message: "Le contenu du fichier de vérification ne correspond pas au challenge.", status: 422 },
 };

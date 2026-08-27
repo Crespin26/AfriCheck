@@ -5,6 +5,7 @@ import { createBrowserIdentity, readOwnershipProof, saveOwnershipProof, type Sto
 import styles from "./domain-verification.module.css";
 
 type Challenge = { challenge: string; verificationUrl: string; hostname: string; expiresAt: string };
+type HistoryItem = { id: string; scannedAt: string; score: number; grade: string };
 type Phase = "idle" | "creating" | "ready" | "verifying" | "verified";
 
 async function responseData(response: Response): Promise<Record<string, unknown>> {
@@ -24,6 +25,14 @@ function isProof(data: Record<string, unknown>): data is Record<string, unknown>
   return typeof data.proof === "string" && typeof data.hostname === "string" && typeof data.expiresAt === "string" && Number.isFinite(Date.parse(data.expiresAt));
 }
 
+async function requestHistory(proof: string, clientSecret: string): Promise<HistoryItem[] | undefined> {
+  const response = await fetch("/api/domains/history", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proof, clientSecret }) });
+  if (!response.ok) return undefined;
+  const data = await responseData(response);
+  if (!Array.isArray(data.history)) return undefined;
+  return data.history.filter((item): item is HistoryItem => Boolean(item && typeof item === "object" && typeof (item as HistoryItem).id === "string" && typeof (item as HistoryItem).scannedAt === "string" && typeof (item as HistoryItem).score === "number" && typeof (item as HistoryItem).grade === "string"));
+}
+
 export function DomainVerification({ targetUrl }: { targetUrl: string }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -31,6 +40,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [proof, setProof] = useState<StoredOwnershipProof | null>(null);
+  const [history, setHistory] = useState<HistoryItem[] | null>(null);
   const hostname = (() => { try { return new URL(targetUrl).hostname; } catch { return ""; } })();
 
   useEffect(() => {
@@ -41,7 +51,11 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
         const response = await fetch("/api/domains/proof", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ proof: stored.proof, clientSecret: identity.secret }) });
         const data = await responseData(response);
         if (response.ok && data.valid === true) {
-          if (data.hostname === hostname) { setProof(stored); setPhase("verified"); }
+          if (data.hostname === hostname) {
+            setProof(stored); setPhase("verified");
+            const entries = await requestHistory(stored.proof, identity.secret);
+            if (entries) setHistory(entries);
+          }
         }
       }).catch(() => undefined);
     }, 0);
@@ -88,14 +102,20 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
       if (!isProof(data)) throw new Error("La réponse du service de vérification est invalide.");
       saveOwnershipProof(window.localStorage, data);
       setProof(data); setPhase("verified"); setChallenge(null); setSecret("");
+      const entries = await requestHistory(data.proof, secret);
+      if (entries) setHistory(entries);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "La vérification a échoué."); setPhase("ready"); }
   }
 
-  if (phase === "verified" && proof) return (
+  if (phase === "verified" && proof) return <div className={styles.verifiedWrap}>
     <section className={styles.verified} aria-live="polite">
       <span aria-hidden>✓</span><div><strong>Domaine vérifié</strong><p>Contrôle de {proof.hostname} confirmé jusqu’au {new Intl.DateTimeFormat("fr-FR", { dateStyle: "long" }).format(new Date(proof.expiresAt))}.</p></div>
     </section>
-  );
+    {history && <section className={styles.history} aria-labelledby="scan-history-title">
+      <div className={styles.historyHeading}><h3 id="scan-history-title">Évolution de la sécurité</h3><span>{history.length} diagnostic{history.length === 1 ? "" : "s"}</span></div>
+      {history.length === 0 ? <p>Aucun diagnostic enregistré. Relancez l’analyse pour commencer le suivi.</p> : <ol>{history.map((item) => <li key={item.id}><time dateTime={item.scannedAt}>{new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(new Date(item.scannedAt))}</time><strong>{item.score}<small>/100</small></strong><span>Note {item.grade}</span></li>)}</ol>}
+    </section>}
+  </div>;
 
   return (
     <section className={styles.panel} aria-labelledby="domain-verification-title">

@@ -2,6 +2,10 @@ import { scanWebsite } from "@/lib/scanner";
 import { toPublicError } from "@/lib/errors";
 import { FixedWindowRateLimiter, rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
 import { clientFingerprint, createRequestId, logScanEvent } from "@/lib/observability";
+import { DomainVerificationError, domainVerificationKey, toDomainVerificationError, verifyOwnershipProof } from "@/lib/domain-verification";
+import { normalizeUrl } from "@/lib/url-safety";
+import { saveScanHistory } from "@/lib/scan-history";
+import { DatabaseConfigurationError } from "@/lib/database";
 
 const limiter = new FixedWindowRateLimiter(5, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 4096;
@@ -29,14 +33,38 @@ export async function POST(request: Request) {
     if (declaredSize > MAX_REQUEST_BYTES) return reject("La requête est trop volumineuse.", 413);
     const rawBody = await request.text();
     if (Buffer.byteLength(rawBody, "utf8") > MAX_REQUEST_BYTES) return reject("La requête est trop volumineuse.", 413);
-    let body: { url?: unknown };
-    try { body = JSON.parse(rawBody) as { url?: unknown }; } catch { return reject("Le corps de la requête doit être un JSON valide.", 400); }
+    let body: { url?: unknown; ownership?: unknown };
+    try { body = JSON.parse(rawBody) as { url?: unknown; ownership?: unknown }; } catch { return reject("Le corps de la requête doit être un JSON valide.", 400); }
     if (typeof body.url !== "string") return reject("Une adresse web est requise.", 400);
 
+    let verifiedHostname: string | undefined;
+    if (body.ownership !== undefined) {
+      if (!body.ownership || typeof body.ownership !== "object") return reject("La preuve de domaine est invalide.", 400);
+      const ownership = body.ownership as { proof?: unknown; clientSecret?: unknown };
+      if (typeof ownership.proof !== "string" || typeof ownership.clientSecret !== "string") return reject("La preuve de domaine est invalide.", 400);
+      verifiedHostname = verifyOwnershipProof(ownership.proof, ownership.clientSecret, domainVerificationKey()).hostname;
+      if (normalizeUrl(body.url).hostname !== verifiedHostname) throw new DomainVerificationError("DOMAIN_MISMATCH");
+    }
+
     const result = await scanWebsite(body.url);
-    logScanEvent({ event: "scan.completed", requestId, durationMs: Date.now() - started, score: result.score, grade: result.grade, clientFingerprint: fingerprint });
-    return Response.json(result, { headers: responseHeaders });
+    let history: { saved: boolean; id?: string; code?: "HISTORY_DISABLED" | "HISTORY_UNAVAILABLE" | "DOMAIN_MISMATCH" } | undefined;
+    if (verifiedHostname) {
+      if (new URL(result.finalUrl).hostname !== verifiedHostname) history = { saved: false, code: "DOMAIN_MISMATCH" };
+      else {
+        try { history = { saved: true, id: await saveScanHistory(verifiedHostname, result) }; }
+        catch (historyError) {
+          history = { saved: false, code: historyError instanceof DatabaseConfigurationError && historyError.code === "DATABASE_DISABLED" ? "HISTORY_DISABLED" : "HISTORY_UNAVAILABLE" };
+        }
+      }
+    }
+    logScanEvent({ event: "scan.completed", requestId, durationMs: Date.now() - started, score: result.score, grade: result.grade, clientFingerprint: fingerprint, historySaved: history?.saved, historyError: history?.code });
+    return Response.json({ ...result, ...(history ? { history } : {}) }, { headers: responseHeaders });
   } catch (error) {
+    const domainError = toDomainVerificationError(error);
+    if (domainError) {
+      logScanEvent({ event: "scan.failed", requestId, durationMs: Date.now() - started, errorCode: "INVALID_REQUEST", clientFingerprint: fingerprint });
+      return errorResponse(domainError.message, domainError.code, domainError.status);
+    }
     const publicError = toPublicError(error);
     logScanEvent({ event: "scan.failed", requestId, durationMs: Date.now() - started, errorCode: publicError.code, clientFingerprint: fingerprint });
     return errorResponse(publicError.message, publicError.code, publicError.status);

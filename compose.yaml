@@ -1,0 +1,42 @@
+services:
+  database:
+    image: postgres:17-alpine3.24@sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73
+    environment:
+      POSTGRES_DB: africheck
+      POSTGRES_USER: africheck
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}
+    volumes:
+      - africheck_database:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U africheck -d africheck"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  app:
+    build: .
+    depends_on:
+      database:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://africheck:${POSTGRES_PASSWORD}@database:5432/africheck
+      DATABASE_SSL: "false"
+      DOMAIN_VERIFICATION_KEY: ${DOMAIN_VERIFICATION_KEY:?DOMAIN_VERIFICATION_KEY must be set}
+      LOG_HASH_KEY: ${LOG_HASH_KEY:?LOG_HASH_KEY must be set}
+      HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
+      TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
+    command: ["sh", "-c", "node scripts/migrate.mjs && node server.js"]
+    ports:
+      - "3000:3000"
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+volumes:
+  africheck_database:

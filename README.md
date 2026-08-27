@@ -49,6 +49,9 @@ Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main
 - `TRUST_PROXY_HEADERS=true` : active l’identification par adresse transmise uniquement lorsque l’application est placée derrière un proxy de confiance qui remplace ces en-têtes ;
 - `LOG_HASH_KEY` : secret aléatoire d’au moins 32 caractères utilisé pour pseudonymiser l’identité réseau dans les journaux. Sans ce secret, aucune empreinte client n’est enregistrée.
 - `DOMAIN_VERIFICATION_KEY` : secret aléatoire d’au moins 32 caractères utilisé pour signer les challenges et preuves de contrôle de domaine. Sans ce secret, les endpoints de vérification restent désactivés ; une valeur trop courte fait échouer la readiness.
+- `DATABASE_URL` : URL PostgreSQL dédiée à AfriCheck. Sans cette valeur, les scans restent disponibles mais l’historique est désactivé ;
+- `DATABASE_SSL=true|false` : active la validation TLS du serveur PostgreSQL. Utilisez `true` avec un service managé ou un réseau non privé ;
+- `HISTORY_RETENTION_DAYS` : conservation des rapports entre 1 et 365 jours, 90 par défaut.
 
 Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secrets) et injectez-les à l’exécution. Ne réutilisez pas la même valeur pour `LOG_HASH_KEY` et `DOMAIN_VERIFICATION_KEY`.
 
@@ -60,6 +63,8 @@ Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secre
 4. Lors des visites suivantes, l’interface revalide la preuve et le secret auprès de `POST /api/domains/proof` avant d’afficher le domaine comme vérifié.
 
 Ce parcours est disponible directement sous chaque rapport de diagnostic. La preuve est liée au secret conservé dans le navigateur : copier le fichier public ou modifier le stockage local ne permet donc pas à un tiers de revendiquer le domaine. Les trois endpoints sont limités en fréquence, n’acceptent que des corps de petite taille et renvoient des réponses non mises en cache.
+
+Seuls les diagnostics lancés avec une preuve valide sont enregistrés. AfriCheck ne stocke dans PostgreSQL ni secret navigateur, ni preuve, ni empreinte réseau. Une redirection vers un autre domaine annule l’enregistrement. L’interface présente les 20 derniers scores non expirés du domaine.
 
 Chaque réponse de l’API expose `X-Request-Id`. Les événements sont écrits en JSON avec la durée, le résultat et un code d’erreur stable, sans URL cible ni adresse IP brute. Les secrets doivent être injectés par la plateforme de déploiement et ne doivent jamais être ajoutés au dépôt.
 
@@ -74,8 +79,12 @@ docker build -t africheck .
 docker run --rm -p 3000:3000 --env-file .env.production africheck
 ```
 
+Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`, `DOMAIN_VERIFICATION_KEY` et `LOG_HASH_KEY` dans l’environnement, puis lancez `docker compose up --build -d`. La base n’est pas exposée sur l’hôte, le conteneur applicatif retire ses capabilities Linux, utilise un système de fichiers en lecture seule et applique les migrations sous verrou avant de démarrer.
+
+Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de déploiement avant de remplacer les instances. Sauvegardez régulièrement PostgreSQL et testez la restauration ; la rétention applicative ne remplace pas une politique de sauvegarde.
+
 - `GET /api/health` : liveness sans dépendance externe ;
-- `GET /api/ready` : readiness du runtime et de la configuration ;
+- `GET /api/ready` : readiness du runtime, de la configuration et du schéma PostgreSQL lorsqu’il est activé ;
 - ne rendez pas directement le conteneur accessible sur Internet : placez-le derrière un proxy TLS qui remplace les en-têtes client avant d’activer `TRUST_PROXY_HEADERS=true`.
 
 ## Architecture
@@ -85,9 +94,10 @@ docker run --rm -p 3000:3000 --env-file .env.production africheck
 - `src/lib/scanner.ts` : contrôles passifs et calcul du score ;
 - `src/lib/url-safety.ts` : validation DNS, IPv4 et IPv6 des cibles ;
 - `src/lib/transport.ts` : connexion avec adresse IP épinglée, limites et collecte TLS.
+- `src/lib/scan-history.ts` : persistance PostgreSQL paramétrée et rétention des diagnostics vérifiés.
 
 Le transport réapplique la validation réseau à chaque redirection, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes par requête. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
 
 ## Limites connues
 
-Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. La limitation de débit actuelle est locale à chaque instance ; un stockage distribué sera nécessaire pour un déploiement horizontal. Avant une mise en production publique, il faudra également renforcer l’isolation réseau et valider le contrôle des domaines pour les analyses avancées.
+Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. La limitation de débit actuelle est locale à chaque instance ; un stockage distribué sera nécessaire pour un déploiement horizontal. Avant une mise en production publique, il faudra également renforcer l’isolation réseau des workers d’analyse.

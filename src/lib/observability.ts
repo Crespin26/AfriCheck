@@ -8,6 +8,8 @@ type ScanEvent = {
   errorCode?: ErrorCode | "RATE_LIMITED" | "INVALID_REQUEST";
   score?: number;
   grade?: string;
+  historySaved?: boolean;
+  historyError?: "HISTORY_DISABLED" | "HISTORY_UNAVAILABLE" | "DOMAIN_MISMATCH";
   clientFingerprint?: string;
 };
 

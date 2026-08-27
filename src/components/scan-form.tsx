@@ -4,11 +4,25 @@ import { FormEvent, useState } from "react";
 import type { ScanResult } from "@/lib/types";
 import { displayHostname, findingSummary, prioritizeFindings, remediationPriorities } from "@/lib/report";
 import { DomainVerification } from "./domain-verification";
+import { createBrowserIdentity, readOwnershipProof } from "@/lib/browser-domain-identity";
 import styles from "./scan-form.module.css";
+
+type ScanWithHistory = ScanResult & { history?: { saved: boolean; id?: string; code?: "HISTORY_DISABLED" | "HISTORY_UNAVAILABLE" | "DOMAIN_MISMATCH" } };
+
+async function storedOwnership(input: string): Promise<{ proof: string; clientSecret: string } | undefined> {
+  try {
+    const candidate = /^[a-z][a-z\d+.-]*:/i.test(input.trim()) ? input.trim() : `https://${input.trim()}`;
+    const hostname = new URL(candidate).hostname;
+    const proof = readOwnershipProof(window.localStorage, hostname);
+    if (!proof) return undefined;
+    const identity = await createBrowserIdentity(window.localStorage, window.crypto);
+    return { proof: proof.proof, clientSecret: identity.secret };
+  } catch { return undefined; }
+}
 
 export function ScanForm() {
   const [url, setUrl] = useState("");
-  const [result, setResult] = useState<ScanResult | null>(null);
+  const [result, setResult] = useState<ScanWithHistory | null>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -16,7 +30,8 @@ export function ScanForm() {
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); setLoading(true); setError(""); setResult(null);
     try {
-      const response = await fetch("/api/scan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url }) });
+      const ownership = await storedOwnership(url);
+      const response = await fetch("/api/scan", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ url, ...(ownership ? { ownership } : {}) }) });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error ?? "Le diagnostic a échoué.");
       setResult(data);
@@ -76,6 +91,8 @@ export function ScanForm() {
               </details>)}
             </div>
             <button type="button" className={styles.exportButton} onClick={exportReport} disabled={exporting}>{exporting ? "Création du PDF…" : "Télécharger le rapport PDF"}<span aria-hidden>↓</span></button>
+            {result.history?.saved && <p className={styles.historySuccess} role="status">✓ Diagnostic ajouté à l’historique sécurisé.</p>}
+            {result.history && !result.history.saved && <p className={styles.historyWarning} role="status">Le diagnostic est terminé, mais l’historique n’a pas pu être mis à jour.</p>}
             <DomainVerification key={result.finalUrl} targetUrl={result.finalUrl} />
           </div>
         </section>
