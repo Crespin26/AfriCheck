@@ -17,6 +17,7 @@ beforeEach(() => {
   delete process.env.TRUST_PROXY_HEADERS;
   delete process.env.DOMAIN_VERIFICATION_KEY;
   delete process.env.LOG_HASH_KEY;
+  delete process.env.SCAN_MAX_CONCURRENCY;
 });
 
 describe("POST /api/scan", () => {
@@ -43,6 +44,26 @@ describe("POST /api/scan", () => {
     expect(blocked.status).toBe(429);
     expect(Number(blocked.headers.get("retry-after"))).toBeGreaterThan(0);
     expect(blocked.headers.get("x-ratelimit-remaining")).toBe("0");
+  });
+
+  it("refuse rapidement un scan lorsque la capacité réseau est occupée", async () => {
+    process.env.SCAN_MAX_CONCURRENCY = "1";
+    const control: { release?: () => void } = {};
+    vi.mocked(scanWebsite).mockImplementationOnce(async (url) => {
+      await new Promise<void>((resolve) => { control.release = resolve; });
+      return { url, finalUrl: url, scannedAt: "2026-08-27T12:00:00.000Z", durationMs: 100, score: 80, grade: "B", findings: [] };
+    });
+    const { POST } = await import("./route");
+    const request = () => new Request("https://app.test/api/scan", { method: "POST", body: JSON.stringify({ url: "example.com" }) });
+    const first = POST(request());
+    await vi.waitFor(() => expect(scanWebsite).toHaveBeenCalledTimes(1));
+    const busy = await POST(request());
+    expect(busy.status).toBe(503);
+    expect(busy.headers.get("retry-after")).toBe("5");
+    await expect(busy.json()).resolves.toMatchObject({ code: "SCAN_BUSY", requestId: "req-test" });
+    expect(logScanEvent).toHaveBeenCalledWith(expect.objectContaining({ event: "scan.busy", errorCode: "SCAN_BUSY" }));
+    control.release?.();
+    await expect(first).resolves.toMatchObject({ status: 200 });
   });
 
   it("retourne un code stable et journalise un échec sans la cible", async () => {

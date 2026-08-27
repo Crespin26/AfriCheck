@@ -7,8 +7,10 @@ import { DomainVerificationError, domainVerificationKey, toDomainVerificationErr
 import { normalizeUrl } from "@/lib/url-safety";
 import { saveScanHistory } from "@/lib/scan-history";
 import { DatabaseConfigurationError } from "@/lib/database";
+import { ConcurrencyGate, scanConcurrencyLimit } from "@/lib/concurrency-gate";
 
 const limiter = new HybridRateLimiter("scan", 5, 10 * 60 * 1000);
+const scanGate = new ConcurrencyGate(scanConcurrencyLimit());
 const MAX_REQUEST_BYTES = 4096;
 
 export async function POST(request: Request) {
@@ -47,7 +49,17 @@ export async function POST(request: Request) {
       if (normalizeUrl(body.url).hostname !== verifiedHostname) throw new DomainVerificationError("DOMAIN_MISMATCH");
     }
 
-    const result = await scanWebsite(body.url);
+    const release = scanGate.tryAcquire();
+    if (!release) {
+      logScanEvent({ event: "scan.busy", requestId, durationMs: Date.now() - started, errorCode: "SCAN_BUSY", clientFingerprint: fingerprint });
+      return Response.json(
+        { error: "Le scanner est temporairement occupé. Réessayez dans quelques secondes.", code: "SCAN_BUSY", requestId },
+        { status: 503, headers: { ...responseHeaders, "retry-after": "5" } },
+      );
+    }
+    let result: Awaited<ReturnType<typeof scanWebsite>>;
+    try { result = await scanWebsite(body.url); }
+    finally { release(); }
     let history: { saved: boolean; id?: string; code?: "HISTORY_DISABLED" | "HISTORY_UNAVAILABLE" | "DOMAIN_MISMATCH" } | undefined;
     if (verifiedHostname) {
       if (new URL(result.finalUrl).hostname !== verifiedHostname) history = { saved: false, code: "DOMAIN_MISMATCH" };

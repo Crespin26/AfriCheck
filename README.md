@@ -53,6 +53,7 @@ Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main
 - `DATABASE_URL` : URL PostgreSQL dédiée à AfriCheck. Sans cette valeur, les scans restent disponibles mais l’historique est désactivé ;
 - `DATABASE_SSL=true|false` : active la validation TLS du serveur PostgreSQL. Utilisez `true` avec un service managé ou un réseau non privé ;
 - `HISTORY_RETENTION_DAYS` : conservation des rapports entre 1 et 365 jours, 90 par défaut.
+- `SCAN_MAX_CONCURRENCY` : nombre maximal de diagnostics réseau simultanés par instance, entre 1 et 32, 4 par défaut.
 
 Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secrets) et injectez-les à l’exécution. Ne réutilisez pas la même valeur pour `LOG_HASH_KEY` et `DOMAIN_VERIFICATION_KEY`.
 
@@ -99,7 +100,7 @@ Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de dépl
 - `src/lib/transport.ts` : connexion avec adresse IP épinglée, limites et collecte TLS.
 - `src/lib/scan-history.ts` : persistance PostgreSQL paramétrée et rétention des diagnostics vérifiés.
 
-Le transport réapplique la validation réseau à chaque redirection, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes par requête. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
+Le transport réapplique la validation réseau à chaque redirection, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes par requête. Une instance n’exécute que quatre diagnostics réseau simultanés par défaut et refuse rapidement la surcharge avec `503` et `Retry-After`. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
 
 ## Limites connues
 

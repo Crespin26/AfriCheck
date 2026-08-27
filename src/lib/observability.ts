@@ -2,10 +2,10 @@ import { createHmac, randomUUID } from "node:crypto";
 import type { ErrorCode } from "./errors";
 
 type ScanEvent = {
-  event: "scan.completed" | "scan.failed" | "scan.rate_limited" | "scan.rejected";
+  event: "scan.completed" | "scan.failed" | "scan.rate_limited" | "scan.rejected" | "scan.busy";
   requestId: string;
   durationMs: number;
-  errorCode?: ErrorCode | "RATE_LIMITED" | "INVALID_REQUEST";
+  errorCode?: ErrorCode | "RATE_LIMITED" | "INVALID_REQUEST" | "SCAN_BUSY";
   score?: number;
   grade?: string;
   historySaved?: boolean;
@@ -24,6 +24,6 @@ export function clientFingerprint(identity: string): string | undefined {
 export function logScanEvent(event: ScanEvent): void {
   const record = JSON.stringify({ timestamp: new Date().toISOString(), service: "africheck", ...event });
   if (event.event === "scan.failed") console.error(record);
-  else if (event.event === "scan.rate_limited" || event.event === "scan.rejected") console.warn(record);
+  else if (event.event === "scan.rate_limited" || event.event === "scan.rejected" || event.event === "scan.busy") console.warn(record);
   else console.info(record);
 }
