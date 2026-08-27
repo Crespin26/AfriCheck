@@ -60,8 +60,20 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 3 : 10, maxPoints: 10, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans protection complète Secure, HttpOnly et SameSite.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Ajoutez Secure, HttpOnly et un SameSite adapté aux cookies sensibles." : "Contrôlez aussi les cookies créés après authentification." });
 
   const html = response.headers.get("content-type")?.includes("text/html") ? response.body : "";
-  const insecureForms = https ? [...html.matchAll(/<form\b[^>]*action\s*=\s*["']http:\/\/[^"']+["']/gi)].length : 0;
-  add(findings, { id: "forms", title: "Formulaires chiffrés", status: insecureForms ? "fail" : "pass", points: insecureForms ? 0 : 10, maxPoints: 10, observation: insecureForms ? `${insecureForms} formulaire(s) envoient des données vers HTTP.` : "Aucune action de formulaire explicitement non chiffrée détectée.", recommendation: insecureForms ? "Envoyez toutes les données de formulaire vers une adresse HTTPS." : "Vérifiez également les formulaires chargés dynamiquement." });
+  const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map(([tag]) => tag);
+  const insecureForms = forms.filter((tag) => {
+    if (!https) return true;
+    const action = tag.match(/\baction\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
+    const target = action?.[1] ?? action?.[2] ?? action?.[3];
+    if (!target) return false;
+    try { return new URL(target, response.finalUrl).protocol !== "https:"; }
+    catch { return true; }
+  }).length;
+  add(findings, {
+    id: "forms", title: "Formulaires chiffrés", status: insecureForms ? "fail" : "pass", points: insecureForms ? 0 : 10, maxPoints: 10,
+    observation: insecureForms ? `${insecureForms} formulaire(s) peuvent transmettre des données sans HTTPS.` : forms.length ? `${forms.length} formulaire(s) utilisent une destination HTTPS.` : "Aucun formulaire détecté dans le HTML initial.",
+    recommendation: insecureForms ? "Servez la page et la destination de chaque formulaire exclusivement via HTTPS." : "Vérifiez également les formulaires chargés dynamiquement.",
+  });
 
   const mixed = https ? [...html.matchAll(/(?:src|href)\s*=\s*["']http:\/\/[^"']+["']/gi)].length : 0;
   add(findings, { id: "mixed-content", title: "Contenu mixte", status: mixed ? "fail" : "pass", points: mixed ? 0 : 10, maxPoints: 10, observation: mixed ? `${mixed} ressource(s) HTTP référencée(s) depuis la page HTTPS.` : "Aucune ressource HTTP explicite détectée dans le HTML initial.", recommendation: mixed ? "Servez toutes les images, scripts et feuilles de style via HTTPS." : "Vérifiez aussi les ressources injectées dynamiquement." });

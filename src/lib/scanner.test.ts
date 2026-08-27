@@ -45,6 +45,21 @@ describe("analyzeResponse", () => {
     expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("fail");
     expect(findings.find((item) => item.id === "cookies")?.status).toBe("warning");
   });
+  it("considère tous les formulaires d’une page HTTP comme non chiffrés", () => {
+    const headers = response().headers;
+    headers.delete("strict-transport-security");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), headers, tls: undefined, body: '<form action="/connexion"><form>' }));
+    expect(findings.find((item) => item.id === "forms")).toMatchObject({ status: "fail", points: 0 });
+    expect(findings.find((item) => item.id === "forms")?.observation).toContain("2 formulaire(s)");
+  });
+  it("accepte une action relative sur HTTPS mais détecte une action HTTP non quotée", () => {
+    const safe = analyzeResponse(new URL("https://example.com"), response({ body: '<form action="/connexion">' }));
+    expect(safe.find((item) => item.id === "forms")?.status).toBe("pass");
+    const unsafe = analyzeResponse(new URL("https://example.com"), response({ body: "<form action=http://example.com/connexion>" }));
+    expect(unsafe.find((item) => item.id === "forms")?.status).toBe("fail");
+    const nonWeb = analyzeResponse(new URL("https://example.com"), response({ body: '<form action="mailto:contact@example.com">' }));
+    expect(nonWeb.find((item) => item.id === "forms")?.status).toBe("fail");
+  });
   it("signale un certificat expiré et une CSP permissive", () => {
     const headers = response().headers;
     headers.set("content-security-policy", "default-src * 'unsafe-inline'");

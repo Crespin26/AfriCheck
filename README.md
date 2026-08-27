@@ -12,7 +12,7 @@ AfriCheck est un diagnostic automatisé et non intrusif de la configuration de s
 - analyse de HSTS, CSP, X-Content-Type-Options, Referrer-Policy et Permissions-Policy ;
 - contrôle anti-clickjacking ;
 - inspection des attributs Secure et HttpOnly des cookies de la réponse initiale ;
-- détection des formulaires envoyant explicitement des données vers HTTP ;
+- détection des formulaires susceptibles d’envoyer des données sans HTTPS, y compris depuis une page HTTP ;
 - inspection du certificat TLS, de sa chaîne et de son expiration ;
 - détection du contenu mixte dans le HTML initial ;
 - validation de la qualité minimale de HSTS, CSP, Referrer-Policy et des cookies ;
