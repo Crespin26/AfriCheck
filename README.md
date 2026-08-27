@@ -47,6 +47,8 @@ npm run build
 - `src/lib/url-safety.ts` : validation DNS, IPv4 et IPv6 des cibles ;
 - `src/lib/transport.ts` : connexion avec adresse IP épinglée, limites et collecte TLS.
 
+Le transport réapplique la validation réseau à chaque redirection, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes par requête. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
+
 ## Limites connues
 
-Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. Avant une mise en production publique, il faudra ajouter une limitation de débit, une isolation réseau renforcée et une validation du contrôle des domaines pour les analyses avancées.
+Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. La limitation de débit actuelle est locale à chaque instance ; un stockage distribué sera nécessaire pour un déploiement horizontal. Avant une mise en production publique, il faudra également renforcer l’isolation réseau et valider le contrôle des domaines pour les analyses avancées.
