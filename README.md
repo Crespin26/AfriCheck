@@ -43,7 +43,7 @@ npm run build
 npm run ci
 ```
 
-Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main`. CodeQL analyse également le code TypeScript, tandis que Dependabot propose les mises à jour npm et GitHub Actions.
+Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main`. CodeQL analyse également le code TypeScript, tandis que Dependabot propose les mises à jour npm, Docker et GitHub Actions. La CI publie un SBOM CycloneDX des dépendances de production et un rapport Trivy de l’image ; toute vulnérabilité HIGH ou CRITICAL disposant d’un correctif bloque la livraison.
 
 ## Configuration d’exploitation
 
