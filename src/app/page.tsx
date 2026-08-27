@@ -4,7 +4,7 @@ import styles from "./page.module.css";
 
 const checks = [
   ["HTTPS & TLS", "Connexion chiffrée et redirections sécurisées"],
-  ["En-têtes HTTP", "CSP, HSTS, anti-clickjacking et permissions"],
+  ["En-têtes HTTP", "CSP, HSTS, anti-clickjacking et empreintes exposées"],
   ["Cookies", "Attributs Secure, HttpOnly et SameSite"],
   ["Pages & formulaires", "Actions non chiffrées et contenu mixte"],
 ];

@@ -3,6 +3,7 @@ import type { Finding, ScanResult, TlsInfo } from "./types";
 import { fetchWebsite, type ScanResponse } from "./transport";
 import { normalizeUrl } from "./url-safety";
 import { ScanError } from "./errors";
+import { technologyExposureFinding } from "./technology-exposure";
 
 export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "grade"> {
   const maximum = findings.reduce((sum, item) => sum + item.maxPoints, 0);
@@ -56,7 +57,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   add(findings, { id: "frame-protection", title: "Protection anti-clickjacking", status: frameProtected ? "pass" : "warning", points: frameProtected ? 5 : 0, maxPoints: 5, observation: frameProtected ? "Une directive anti-clickjacking valide a été observée." : "Aucune protection anti-clickjacking claire n’a été observée.", recommendation: frameProtected ? "Aucune action prioritaire." : "Ajoutez frame-ancestors dans la CSP ou X-Frame-Options." });
 
   const cookieIssues = response.cookies.filter((cookie) => !/;\s*secure(?:;|$)/i.test(cookie) || !/;\s*httponly(?:;|$)/i.test(cookie) || !/;\s*samesite=(strict|lax|none)(?:;|$)/i.test(cookie));
-  add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 5 : 15, maxPoints: 15, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans protection complète Secure, HttpOnly et SameSite.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Ajoutez Secure, HttpOnly et un SameSite adapté aux cookies sensibles." : "Contrôlez aussi les cookies créés après authentification." });
+  add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 3 : 10, maxPoints: 10, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans protection complète Secure, HttpOnly et SameSite.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Ajoutez Secure, HttpOnly et un SameSite adapté aux cookies sensibles." : "Contrôlez aussi les cookies créés après authentification." });
 
   const html = response.headers.get("content-type")?.includes("text/html") ? response.body : "";
   const insecureForms = https ? [...html.matchAll(/<form\b[^>]*action\s*=\s*["']http:\/\/[^"']+["']/gi)].length : 0;
@@ -64,6 +65,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
 
   const mixed = https ? [...html.matchAll(/(?:src|href)\s*=\s*["']http:\/\/[^"']+["']/gi)].length : 0;
   add(findings, { id: "mixed-content", title: "Contenu mixte", status: mixed ? "fail" : "pass", points: mixed ? 0 : 10, maxPoints: 10, observation: mixed ? `${mixed} ressource(s) HTTP référencée(s) depuis la page HTTPS.` : "Aucune ressource HTTP explicite détectée dans le HTML initial.", recommendation: mixed ? "Servez toutes les images, scripts et feuilles de style via HTTPS." : "Vérifiez aussi les ressources injectées dynamiquement." });
+  add(findings, technologyExposureFinding(response.headers, html));
   return findings;
 }
 
