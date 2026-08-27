@@ -53,6 +53,19 @@ Chaque réponse de l’API expose `X-Request-Id`. Les événements sont écrits 
 
 AfriCheck protège également ses propres pages avec une CSP stricte à nonce unique, ainsi qu’avec HSTS en production, anti-clickjacking, `nosniff`, une politique de référent restrictive et une politique de permissions minimale.
 
+## Déploiement conteneurisé
+
+L’image de production est multi-stage, construite depuis le fichier de verrouillage npm et exécutée par l’utilisateur non privilégié `nextjs`. Elle expose le port 3000 et contient un healthcheck.
+
+```bash
+docker build -t africheck .
+docker run --rm -p 3000:3000 --env-file .env.production africheck
+```
+
+- `GET /api/health` : liveness sans dépendance externe ;
+- `GET /api/ready` : readiness du runtime et de la configuration ;
+- ne rendez pas directement le conteneur accessible sur Internet : placez-le derrière un proxy TLS qui remplace les en-têtes client avant d’activer `TRUST_PROXY_HEADERS=true`.
+
 ## Architecture
 
 - `src/app` : interface et route API `POST /api/scan` ;

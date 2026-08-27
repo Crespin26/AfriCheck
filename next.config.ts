@@ -2,6 +2,7 @@ import type { NextConfig } from "next";
 import { baseSecurityHeaders } from "./src/lib/security-policy";
 
 const nextConfig: NextConfig = {
+  output: "standalone",
   turbopack: {
     root: process.cwd(),
   },
