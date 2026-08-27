@@ -69,7 +69,7 @@ Seuls les diagnostics lancés avec une preuve valide sont enregistrés. AfriChec
 
 Chaque réponse de l’API expose `X-Request-Id`. Les événements sont écrits en JSON avec la durée, le résultat et un code d’erreur stable, sans URL cible ni adresse IP brute. Les secrets doivent être injectés par la plateforme de déploiement et ne doivent jamais être ajoutés au dépôt.
 
-Lorsque PostgreSQL et `LOG_HASH_KEY` sont configurés, le quota de `POST /api/scan` est atomique et partagé entre les instances. Seul un HMAC complet de l’identité client est conservé dans une table non journalisée et à durée limitée ; en cas d’indisponibilité de PostgreSQL, l’application se replie sur le quota local sans interrompre le scanner.
+Lorsque PostgreSQL et `LOG_HASH_KEY` sont configurés, les quotas des endpoints coûteux ou sensibles sont atomiques et partagés entre les instances. Seul un HMAC complet de l’identité client est conservé dans une table non journalisée et à durée limitée ; en cas d’indisponibilité de PostgreSQL, l’application se replie sur un quota local sans interrompre le service.
 
 AfriCheck protège également ses propres pages avec une CSP stricte à nonce unique, ainsi qu’avec HSTS en production, anti-clickjacking, `nosniff`, une politique de référent restrictive et une politique de permissions minimale.
 
@@ -103,4 +103,4 @@ Le transport réapplique la validation réseau à chaque redirection, conserve l
 
 ## Limites connues
 
-Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. Les quotas des endpoints auxiliaires restent locaux à chaque instance. Avant une mise en production publique à grande échelle, il faudra également renforcer l’isolation réseau des workers d’analyse.
+Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. Avant une mise en production publique à grande échelle, il faudra également renforcer l’isolation réseau des workers d’analyse.

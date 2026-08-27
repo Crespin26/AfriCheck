@@ -23,6 +23,14 @@ describe("HybridRateLimiter", () => {
     expect(vi.mocked(query).mock.calls[0][1]?.slice(2)).toEqual([new Date(120_000), new Date(180_000)]);
   });
 
+  it("sépare les pseudonymes entre les endpoints", async () => {
+    const query = vi.fn(async () => ({ rows: [{ request_count: 1 }] })) as unknown as RateLimitQuery;
+    const dependencies = { query, hashKey: "k".repeat(32) };
+    await new HybridRateLimiter("scan", 5, 60_000, dependencies).check("client", 120_000);
+    await new HybridRateLimiter("report", 5, 60_000, dependencies).check("client", 120_000);
+    expect(vi.mocked(query).mock.calls[0][1]?.[1]).not.toBe(vi.mocked(query).mock.calls[1][1]?.[1]);
+  });
+
   it("se replie localement sans clé ou lorsque PostgreSQL échoue", async () => {
     const warning = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const failedQuery = vi.fn(async () => { throw new Error("database unavailable"); }) as unknown as RateLimitQuery;

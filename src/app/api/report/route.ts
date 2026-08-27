@@ -1,14 +1,15 @@
 import { generateReportPdf, parseReportInput, type ReportInput } from "@/lib/pdf-report";
-import { FixedWindowRateLimiter, rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
+import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
+import { HybridRateLimiter } from "@/lib/distributed-rate-limit";
 import { createRequestId } from "@/lib/observability";
 import { displayHostname } from "@/lib/report";
 
-const limiter = new FixedWindowRateLimiter(10, 10 * 60 * 1000);
+const limiter = new HybridRateLimiter("report", 10, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 65_536;
 
 export async function POST(request: Request) {
   const requestId = createRequestId();
-  const decision = limiter.check(requestIdentity(request));
+  const decision = await limiter.check(requestIdentity(request));
   const headers = { ...rateLimitHeaders(decision), "cache-control": "no-store", "x-request-id": requestId };
   const error = (message: string, status: number) => Response.json({ error: message, code: "INVALID_REPORT", requestId }, { status, headers });
   if (!decision.allowed) return Response.json({ error: "Trop d’exports demandés. Réessayez plus tard.", code: "RATE_LIMITED", requestId }, { status: 429, headers });

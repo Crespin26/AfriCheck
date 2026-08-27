@@ -1,15 +1,16 @@
 import { databaseConfiguration, DatabaseConfigurationError } from "@/lib/database";
 import { domainVerificationKey, toDomainVerificationError, verifyOwnershipProof } from "@/lib/domain-verification";
 import { createRequestId } from "@/lib/observability";
-import { FixedWindowRateLimiter, rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
+import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
+import { HybridRateLimiter } from "@/lib/distributed-rate-limit";
 import { listScanHistory } from "@/lib/scan-history";
 
-const limiter = new FixedWindowRateLimiter(20, 10 * 60 * 1000);
+const limiter = new HybridRateLimiter("domain-history", 20, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 8192;
 
 export async function POST(request: Request) {
   const requestId = createRequestId();
-  const decision = limiter.check(requestIdentity(request));
+  const decision = await limiter.check(requestIdentity(request));
   const headers = { ...rateLimitHeaders(decision), "cache-control": "no-store", "x-request-id": requestId };
   const fail = (message: string, code: string, status: number) => Response.json({ error: message, code, requestId }, { status, headers });
   if (!decision.allowed) return fail("Trop de consultations demandées. Réessayez plus tard.", "RATE_LIMITED", 429);
