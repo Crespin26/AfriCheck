@@ -73,7 +73,7 @@ AfriCheck protège également ses propres pages avec une CSP stricte à nonce un
 
 ## Déploiement conteneurisé
 
-L’image de production est multi-stage, construite depuis le fichier de verrouillage npm et exécutée par l’utilisateur non privilégié `nextjs`. Elle expose le port 3000 et contient un healthcheck.
+L’image de production est multi-stage, construite depuis le fichier de verrouillage npm et exécutée par l’utilisateur non privilégié `nextjs`. Le stage final retire npm, npx et les gestionnaires de paquets inutiles à l’exécution afin de réduire la surface d’attaque. Elle expose le port 3000 et contient un healthcheck.
 
 ```bash
 docker build -t africheck .
