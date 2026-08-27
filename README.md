@@ -13,6 +13,9 @@ AfriCheck est un diagnostic automatisé et non intrusif de la configuration de s
 - contrôle anti-clickjacking ;
 - inspection des attributs Secure et HttpOnly des cookies de la réponse initiale ;
 - détection des formulaires envoyant explicitement des données vers HTTP ;
+- inspection du certificat TLS, de sa chaîne et de son expiration ;
+- détection du contenu mixte dans le HTML initial ;
+- validation de la qualité minimale de HSTS, CSP, Referrer-Policy et des cookies ;
 - score transparent sur 100 et résultat détaillé en français.
 
 Les scans de ports, l’exploitation de vulnérabilités et les affirmations de CVE ne font volontairement pas partie de ce MVP.
@@ -32,6 +35,7 @@ Ouvrir ensuite [http://localhost:3000](http://localhost:3000).
 
 ```bash
 npm run lint
+npm test
 npm run build
 ```
 
@@ -40,7 +44,8 @@ npm run build
 - `src/app` : interface et route API `POST /api/scan` ;
 - `src/components` : formulaire interactif et restitution du score ;
 - `src/lib/scanner.ts` : contrôles passifs et calcul du score ;
-- `src/lib/url-safety.ts` : validation des cibles et première barrière SSRF.
+- `src/lib/url-safety.ts` : validation DNS, IPv4 et IPv6 des cibles ;
+- `src/lib/transport.ts` : connexion avec adresse IP épinglée, limites et collecte TLS.
 
 ## Limites connues
 
