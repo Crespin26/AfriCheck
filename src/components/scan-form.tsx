@@ -2,6 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import type { ScanResult } from "@/lib/types";
+import { displayHostname, findingSummary, prioritizeFindings, remediationPriorities } from "@/lib/report";
 import styles from "./scan-form.module.css";
 
 export function ScanForm() {
@@ -21,6 +22,10 @@ export function ScanForm() {
     finally { setLoading(false); }
   }
 
+  const summary = result ? findingSummary(result.findings) : null;
+  const priorities = result ? remediationPriorities(result.findings) : [];
+  const orderedFindings = result ? prioritizeFindings(result.findings) : [];
+
   return (
     <div className={styles.wrap}>
       <form className={styles.form} onSubmit={submit}>
@@ -34,9 +39,24 @@ export function ScanForm() {
         <section className={styles.result} aria-live="polite">
           <div className={styles.score}><strong>{result.score}</strong><span>/100</span><small>Note {result.grade}</small></div>
           <div className={styles.summary}>
-            <p>Diagnostic terminé en {(result.durationMs / 1000).toFixed(1)} s</p>
+            <p>{displayHostname(result.finalUrl)} · Diagnostic terminé en {(result.durationMs / 1000).toFixed(1)} s</p>
             <h2>{result.score >= 75 ? "Bonne base de sécurité" : result.score >= 50 ? "Des améliorations sont nécessaires" : "Plusieurs protections sont à renforcer"}</h2>
-            <ul>{result.findings.map((finding) => <li key={finding.id} data-status={finding.status}><span>{finding.status === "pass" ? "✓" : finding.status === "fail" ? "×" : "!"}</span><div><b>{finding.title}</b><small>{finding.observation}</small></div><em>{finding.points}/{finding.maxPoints}</em></li>)}</ul>
+            <div className={styles.counts} aria-label="Résumé des contrôles">
+              <span data-status="fail"><b>{summary?.fail}</b> à corriger</span>
+              <span data-status="warning"><b>{summary?.warning}</b> à améliorer</span>
+              <span data-status="pass"><b>{summary?.pass}</b> réussi{summary?.pass === 1 ? "" : "s"}</span>
+            </div>
+            {priorities.length > 0 && <div className={styles.priorities}>
+              <h3>Actions prioritaires</h3>
+              <ol>{priorities.map((finding) => <li key={finding.id}><b>{finding.title}</b><span>{finding.recommendation}</span></li>)}</ol>
+            </div>}
+            <div className={styles.findings}>
+              <h3>Résultats détaillés</h3>
+              {orderedFindings.map((finding) => <details key={finding.id} data-status={finding.status}>
+                <summary><span>{finding.status === "pass" ? "✓" : finding.status === "fail" ? "×" : "!"}</span><b>{finding.title}</b><em>{finding.points}/{finding.maxPoints}</em></summary>
+                <div><p>{finding.observation}</p><strong>Recommandation</strong><p>{finding.recommendation}</p></div>
+              </details>)}
+            </div>
           </div>
         </section>
       )}
