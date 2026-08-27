@@ -1,6 +1,7 @@
 import "server-only";
 import { lookup } from "node:dns/promises";
 import { BlockList, isIP } from "node:net";
+import { ScanError } from "./errors";
 
 export type ResolvedAddress = { address: string; family: number };
 export type Resolver = (hostname: string) => Promise<ResolvedAddress[]>;
@@ -28,12 +29,12 @@ export function isPublicIp(address: string): boolean {
 
 export function normalizeUrl(input: string): URL {
   const value = input.trim();
-  if (!value || value.length > 2048) throw new Error("Adresse web invalide.");
+  if (!value || value.length > 2048) throw new ScanError("INVALID_URL", "Adresse web invalide.");
   const candidate = /^[a-z][a-z\d+.-]*:/i.test(value) ? value : `https://${value}`;
   let url: URL;
-  try { url = new URL(candidate); } catch { throw new Error("Adresse web invalide."); }
-  if (!["http:", "https:"].includes(url.protocol)) throw new Error("Seules les adresses HTTP et HTTPS sont acceptées.");
-  if (url.username || url.password || url.port) throw new Error("Les identifiants et ports personnalisés ne sont pas acceptés.");
+  try { url = new URL(candidate); } catch { throw new ScanError("INVALID_URL", "Adresse web invalide."); }
+  if (!["http:", "https:"].includes(url.protocol)) throw new ScanError("UNSUPPORTED_PROTOCOL", "Seules les adresses HTTP et HTTPS sont acceptées.");
+  if (url.username || url.password || url.port) throw new ScanError("INVALID_URL", "Les identifiants et ports personnalisés ne sont pas acceptés.");
   return url;
 }
 
@@ -42,10 +43,10 @@ const defaultResolver: Resolver = async (hostname) => lookup(hostname, { all: tr
 export async function resolvePublicUrl(url: URL, resolver: Resolver = defaultResolver): Promise<ResolvedAddress> {
   const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   if (blockedHostnames.has(hostname) || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname.endsWith(".internal")) {
-    throw new Error("Cette adresse réseau n’est pas autorisée.");
+    throw new ScanError("TARGET_BLOCKED", "Cette adresse réseau n’est pas autorisée.");
   }
   const family = isIP(hostname);
   const addresses = family ? [{ address: hostname, family }] : await resolver(hostname);
-  if (!addresses.length || addresses.some(({ address }) => !isPublicIp(address))) throw new Error("Cette adresse réseau n’est pas autorisée.");
+  if (!addresses.length || addresses.some(({ address }) => !isPublicIp(address))) throw new ScanError("TARGET_BLOCKED", "Cette adresse réseau n’est pas autorisée.");
   return addresses[0];
 }

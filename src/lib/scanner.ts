@@ -2,6 +2,7 @@ import "server-only";
 import type { Finding, ScanResult, TlsInfo } from "./types";
 import { fetchWebsite, type ScanResponse } from "./transport";
 import { normalizeUrl } from "./url-safety";
+import { ScanError } from "./errors";
 
 export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "grade"> {
   const maximum = findings.reduce((sum, item) => sum + item.maxPoints, 0);
@@ -70,7 +71,7 @@ export async function scanWebsite(input: string): Promise<ScanResult> {
   const started = Date.now();
   const url = normalizeUrl(input);
   const response = await fetchWebsite(url);
-  if (response.status < 200 || response.status >= 400) throw new Error(`Le site a répondu avec le statut HTTP ${response.status}.`);
+  if (response.status < 200 || response.status >= 400) throw new ScanError("UPSTREAM_HTTP_ERROR", `Le site a répondu avec le statut HTTP ${response.status}.`, 502);
   const findings = analyzeResponse(url, response);
   return { url: url.toString(), finalUrl: response.finalUrl.toString(), scannedAt: new Date().toISOString(), durationMs: Date.now() - started, ...scoreFindings(findings), findings };
 }

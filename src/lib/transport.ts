@@ -5,6 +5,7 @@ import type { IncomingHttpHeaders, IncomingMessage } from "node:http";
 import type { TLSSocket } from "node:tls";
 import type { TlsInfo } from "./types";
 import { resolvePublicUrl, type ResolvedAddress } from "./url-safety";
+import { ScanError } from "./errors";
 
 const MAX_BODY_BYTES = 2_000_000;
 const TIMEOUT_MS = 12_000;
@@ -46,7 +47,7 @@ function readBody(response: IncomingMessage, maxBodyBytes: number): Promise<stri
     response.on("data", (chunk: Buffer) => {
       size += chunk.length;
       if (size > maxBodyBytes) {
-        response.destroy(new Error("La page est trop volumineuse pour ce diagnostic."));
+        response.destroy(new ScanError("RESPONSE_TOO_LARGE", "La page est trop volumineuse pour ce diagnostic.", 502));
         return;
       }
       chunks.push(chunk);
@@ -59,7 +60,7 @@ function readBody(response: IncomingMessage, maxBodyBytes: number): Promise<stri
 async function requestOnce(url: URL, options: RequiredTransportOptions): Promise<Omit<ScanResponse, "finalUrl">> {
   const started = Date.now();
   const pinned = await new Promise<ResolvedAddress>((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error("La résolution DNS met trop de temps à répondre.")), options.timeoutMs);
+    const timer = setTimeout(() => reject(new ScanError("DNS_TIMEOUT", "La résolution DNS met trop de temps à répondre.", 504)), options.timeoutMs);
     options.resolveAddress(url).then(
       (address) => { clearTimeout(timer); resolve(address); },
       (error) => { clearTimeout(timer); reject(error); },
@@ -88,7 +89,7 @@ async function requestOnce(url: URL, options: RequiredTransportOptions): Promise
         const encoding = response.headers["content-encoding"]?.toLowerCase();
         if (encoding && encoding !== "identity") {
           response.destroy();
-          throw new Error(`L’encodage de réponse ${encoding} n’est pas pris en charge.`);
+          throw new ScanError("UNSUPPORTED_ENCODING", "L’encodage de cette réponse n’est pas pris en charge.", 502);
         }
         const socket = response.socket as TLSSocket;
         const certificate = url.protocol === "https:" ? socket.getPeerCertificate() : undefined;
@@ -103,7 +104,7 @@ async function requestOnce(url: URL, options: RequiredTransportOptions): Promise
         finish(resolve, result);
       } catch (error) { finish(reject, error); }
     });
-    const deadline = setTimeout(() => request.destroy(new Error("Le site met trop de temps à répondre.")), remainingMs);
+    const deadline = setTimeout(() => request.destroy(new ScanError("REQUEST_TIMEOUT", "Le site met trop de temps à répondre.", 504)), remainingMs);
     request.on("error", (error) => finish(reject, error));
     request.end();
   });
@@ -118,7 +119,7 @@ export async function fetchWebsite(initial: URL, overrides: TransportOptions = {
     const location = response.headers.get("location");
     if (!location) return { ...response, finalUrl: current };
     current = new URL(location, current);
-    if (!["http:", "https:"].includes(current.protocol)) throw new Error("Redirection non autorisée détectée.");
+    if (!["http:", "https:"].includes(current.protocol)) throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée.");
   }
-  throw new Error("Le site effectue trop de redirections.");
+  throw new ScanError("TOO_MANY_REDIRECTS", "Le site effectue trop de redirections.", 502);
 }

@@ -69,7 +69,7 @@ describe("fetchWebsite", () => {
 
   it("refuse un encodage inattendu au lieu d’analyser des octets compressés", async () => {
     server.on("request", (_request, response) => { response.writeHead(200, { "content-encoding": "gzip" }); response.end("not-really-gzip"); });
-    await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options())).rejects.toThrow("gzip");
+    await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options())).rejects.toMatchObject({ code: "UNSUPPORTED_ENCODING" });
   });
 
   it("limite le nombre de redirections", async () => {
