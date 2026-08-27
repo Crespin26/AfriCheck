@@ -1,13 +1,14 @@
 import { scanWebsite } from "@/lib/scanner";
 import { toPublicError } from "@/lib/errors";
-import { FixedWindowRateLimiter, rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
+import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
+import { HybridRateLimiter } from "@/lib/distributed-rate-limit";
 import { clientFingerprint, createRequestId, logScanEvent } from "@/lib/observability";
 import { DomainVerificationError, domainVerificationKey, toDomainVerificationError, verifyOwnershipProof } from "@/lib/domain-verification";
 import { normalizeUrl } from "@/lib/url-safety";
 import { saveScanHistory } from "@/lib/scan-history";
 import { DatabaseConfigurationError } from "@/lib/database";
 
-const limiter = new FixedWindowRateLimiter(5, 10 * 60 * 1000);
+const limiter = new HybridRateLimiter("scan", 5, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 4096;
 
 export async function POST(request: Request) {
@@ -15,7 +16,7 @@ export async function POST(request: Request) {
   const requestId = createRequestId();
   const identity = requestIdentity(request);
   const fingerprint = clientFingerprint(identity);
-  const decision = limiter.check(identity);
+  const decision = await limiter.check(identity);
   const responseHeaders = { ...rateLimitHeaders(decision), "cache-control": "no-store", "x-request-id": requestId };
   const errorResponse = (error: string, code: string, status: number) => Response.json({ error, code, requestId }, { status, headers: responseHeaders });
   const reject = (error: string, status: number) => {

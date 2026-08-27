@@ -11,7 +11,13 @@ vi.mock("@/lib/observability", () => ({ createRequestId: () => "req-test", clien
 vi.mock("@/lib/domain-verification", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/lib/domain-verification")>()), verifyOwnershipProof }));
 vi.mock("@/lib/scan-history", () => ({ saveScanHistory }));
 
-beforeEach(() => { vi.resetModules(); vi.clearAllMocks(); delete process.env.TRUST_PROXY_HEADERS; delete process.env.DOMAIN_VERIFICATION_KEY; });
+beforeEach(() => {
+  vi.resetModules();
+  vi.clearAllMocks();
+  delete process.env.TRUST_PROXY_HEADERS;
+  delete process.env.DOMAIN_VERIFICATION_KEY;
+  delete process.env.LOG_HASH_KEY;
+});
 
 describe("POST /api/scan", () => {
   it("refuse un JSON invalide sans exposer l’erreur du parseur", async () => {
