@@ -95,4 +95,16 @@ describe("analyzeResponse", () => {
     expect(findings.find((item) => item.id === "tls")?.status).toBe("fail");
     expect(findings.find((item) => item.id === "content-security-policy")?.status).toBe("warning");
   });
+  it("détecte les mécanismes de script CSP permissifs", () => {
+    const headers = response().headers;
+    headers.set("content-security-policy", "default-src 'self'; script-src https: 'unsafe-eval'");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "content-security-policy")).toMatchObject({ status: "warning", points: 6 });
+  });
+  it("accepte une politique de scripts à nonce sans source générique", () => {
+    const headers = response().headers;
+    headers.set("content-security-policy", "default-src 'none'; script-src 'nonce-test' 'strict-dynamic'; object-src 'none'; frame-ancestors 'none'");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "content-security-policy")).toMatchObject({ status: "pass", points: 12 });
+  });
 });

@@ -91,6 +91,21 @@ function analyzeHsts(header: string, https: boolean): Finding {
   };
 }
 
+function cspIsWeak(header: string): boolean {
+  const directives = new Map<string, string[]>();
+  for (const rawDirective of header.split(";")) {
+    const [rawName, ...rawSources] = rawDirective.trim().split(/\s+/);
+    const name = rawName?.toLowerCase();
+    if (name && !directives.has(name)) directives.set(name, rawSources.map((source) => source.toLowerCase()));
+  }
+  const baseScripts = directives.get("script-src") ?? directives.get("default-src");
+  if (!baseScripts) return true;
+  const scriptPolicies = [directives.get("script-src-elem") ?? baseScripts, directives.get("script-src-attr") ?? baseScripts];
+  const dangerousScriptSources = new Set(["*", "'unsafe-inline'", "'unsafe-eval'", "http:", "https:", "data:", "blob:"]);
+  if (scriptPolicies.some((sources) => sources.some((source) => dangerousScriptSources.has(source)))) return true;
+  return [...directives.entries()].some(([name, sources]) => (name.endsWith("-src") || name === "frame-ancestors") && sources.includes("*"));
+}
+
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
@@ -101,8 +116,8 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   add(findings, analyzeHsts(hsts, https));
 
   const csp = response.headers.get("content-security-policy") ?? "";
-  const weakCsp = /unsafe-inline|\*\s*(?:;|$)/i.test(csp) || !/default-src|script-src/i.test(csp);
-  add(findings, { id: "content-security-policy", title: "Content Security Policy", status: !csp ? "fail" : weakCsp ? "warning" : "pass", points: !csp ? 0 : weakCsp ? 6 : 12, maxPoints: 12, observation: !csp ? "Aucune CSP n’a été observée." : weakCsp ? "Une CSP existe mais contient des règles permissives." : "Une CSP structurée a été observée.", recommendation: !csp ? "Définissez une CSP adaptée pour réduire les risques d’injection." : weakCsp ? "Réduisez les jokers et unsafe-inline ; privilégiez des nonces ou hashes." : "Testez régulièrement la politique et surveillez les violations." });
+  const weakCsp = csp ? cspIsWeak(csp) : false;
+  add(findings, { id: "content-security-policy", title: "Content Security Policy", status: !csp ? "fail" : weakCsp ? "warning" : "pass", points: !csp ? 0 : weakCsp ? 6 : 12, maxPoints: 12, observation: !csp ? "Aucune CSP n’a été observée." : weakCsp ? "Une CSP existe mais autorise des sources ou mécanismes de script permissifs." : "Une CSP structurée a été observée.", recommendation: !csp ? "Définissez une CSP adaptée pour réduire les risques d’injection." : weakCsp ? "Retirez les jokers, schémas génériques, unsafe-inline et unsafe-eval ; privilégiez des nonces ou hashes." : "Testez régulièrement la politique et surveillez les violations." });
 
   const nosniff = response.headers.get("x-content-type-options")?.toLowerCase() === "nosniff";
   add(findings, { id: "x-content-type-options", title: "X-Content-Type-Options", status: nosniff ? "pass" : "warning", points: nosniff ? 5 : 0, maxPoints: 5, observation: nosniff ? "La valeur nosniff est active." : "La valeur nosniff n’a pas été observée.", recommendation: nosniff ? "Aucune action prioritaire." : "Ajoutez X-Content-Type-Options: nosniff." });
