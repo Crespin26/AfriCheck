@@ -106,6 +106,17 @@ function cspIsWeak(header: string): boolean {
   return [...directives.entries()].some(([name, sources]) => (name.endsWith("-src") || name === "frame-ancestors") && sources.includes("*"));
 }
 
+function analyzeReferrerPolicy(header: string): Finding {
+  const recognized = new Set(["no-referrer", "no-referrer-when-downgrade", "origin", "origin-when-cross-origin", "same-origin", "strict-origin", "strict-origin-when-cross-origin", "unsafe-url"]);
+  const effective = header.split(",").map((value) => value.trim().toLowerCase()).reverse().find((value) => recognized.has(value));
+  const restrictive = effective !== undefined && ["no-referrer", "same-origin", "strict-origin", "strict-origin-when-cross-origin"].includes(effective);
+  return {
+    id: "referrer-policy", title: "Referrer-Policy", status: restrictive ? "pass" : "warning", points: restrictive ? 5 : 0, maxPoints: 5,
+    observation: restrictive ? `Politique effective : ${effective}.` : effective ? `La politique effective ${effective} peut divulguer trop d’informations.` : "Aucune politique restrictive valide n’a été observée.",
+    recommendation: restrictive ? "Aucune action prioritaire." : "Utilisez strict-origin-when-cross-origin ou une politique plus restrictive.",
+  };
+}
+
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
@@ -122,9 +133,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const nosniff = response.headers.get("x-content-type-options")?.toLowerCase() === "nosniff";
   add(findings, { id: "x-content-type-options", title: "X-Content-Type-Options", status: nosniff ? "pass" : "warning", points: nosniff ? 5 : 0, maxPoints: 5, observation: nosniff ? "La valeur nosniff est active." : "La valeur nosniff n’a pas été observée.", recommendation: nosniff ? "Aucune action prioritaire." : "Ajoutez X-Content-Type-Options: nosniff." });
 
-  const referrer = response.headers.get("referrer-policy")?.toLowerCase() ?? "";
-  const safeReferrer = Boolean(referrer && !referrer.includes("unsafe-url"));
-  add(findings, { id: "referrer-policy", title: "Referrer-Policy", status: safeReferrer ? "pass" : "warning", points: safeReferrer ? 5 : 0, maxPoints: 5, observation: safeReferrer ? `Politique observée : ${referrer}.` : "Aucune politique restrictive valide n’a été observée.", recommendation: safeReferrer ? "Aucune action prioritaire." : "Utilisez strict-origin-when-cross-origin ou une politique plus restrictive." });
+  add(findings, analyzeReferrerPolicy(response.headers.get("referrer-policy") ?? ""));
 
   const permissions = response.headers.get("permissions-policy");
   add(findings, { id: "permissions-policy", title: "Permissions-Policy", status: permissions ? "pass" : "warning", points: permissions ? 3 : 0, maxPoints: 3, observation: permissions ? "Une politique de permissions est définie." : "Aucune politique de permissions n’a été observée.", recommendation: permissions ? "Vérifiez qu’elle désactive les fonctions inutilisées." : "Désactivez les fonctions du navigateur inutilisées." });

@@ -107,4 +107,16 @@ describe("analyzeResponse", () => {
     const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
     expect(findings.find((item) => item.id === "content-security-policy")).toMatchObject({ status: "pass", points: 12 });
   });
+  it("évalue la dernière Referrer-Policy reconnue", () => {
+    const headers = response().headers;
+    headers.set("referrer-policy", "unsafe-url, strict-origin-when-cross-origin");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "referrer-policy")).toMatchObject({ status: "pass", points: 5 });
+  });
+  it("signale une Referrer-Policy qui divulgue l’URL entre sites HTTPS", () => {
+    const headers = response().headers;
+    headers.set("referrer-policy", "no-referrer-when-downgrade");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "referrer-policy")).toMatchObject({ status: "warning", points: 0 });
+  });
 });
