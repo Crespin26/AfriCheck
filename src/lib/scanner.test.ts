@@ -45,6 +45,16 @@ describe("analyzeResponse", () => {
     expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("fail");
     expect(findings.find((item) => item.id === "cookies")?.status).toBe("warning");
   });
+  it("refuse de valider des cookies reçus sur HTTP malgré leurs attributs", () => {
+    const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), tls: undefined }));
+    expect(findings.find((item) => item.id === "cookies")).toMatchObject({ status: "warning", points: 3 });
+  });
+  it("applique les contraintes des préfixes de cookies", () => {
+    const valid = analyzeResponse(new URL("https://example.com"), response({ cookies: ["__Host-session=abc; Secure; HttpOnly; SameSite=Strict; Path=/"] }));
+    expect(valid.find((item) => item.id === "cookies")?.status).toBe("pass");
+    const invalid = analyzeResponse(new URL("https://example.com"), response({ cookies: ["__Host-session=abc; Secure; HttpOnly; SameSite=Lax; Path=/; Domain=example.com"] }));
+    expect(invalid.find((item) => item.id === "cookies")?.status).toBe("warning");
+  });
   it("distingue les ressources mixtes des simples liens de navigation", () => {
     const safe = analyzeResponse(new URL("https://example.com"), response({ body: '<a href="http://example.net">Documentation</a>' }));
     expect(safe.find((item) => item.id === "mixed-content")?.status).toBe("pass");

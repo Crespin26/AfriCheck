@@ -48,6 +48,24 @@ function countMixedContent(html: string, baseUrl: URL): number {
   return count;
 }
 
+function cookieIsProtected(cookie: string, https: boolean): boolean {
+  if (!https) return false;
+  const segments = cookie.split(";").map((segment) => segment.trim());
+  const separator = segments[0]?.indexOf("=") ?? -1;
+  if (separator <= 0) return false;
+  const name = segments[0].slice(0, separator);
+  const attributes = segments.slice(1);
+  const hasFlag = (flag: string) => attributes.some((attribute) => attribute.toLowerCase() === flag);
+  const attributeValue = (key: string) => attributes.find((attribute) => attribute.toLowerCase().startsWith(`${key}=`))?.slice(key.length + 1).trim();
+  const secure = hasFlag("secure");
+  const httpOnly = hasFlag("httponly");
+  const sameSite = attributeValue("samesite")?.toLowerCase();
+  if (!secure || !httpOnly || !sameSite || !["strict", "lax", "none"].includes(sameSite)) return false;
+  if (name.startsWith("__Secure-") && !secure) return false;
+  if (name.startsWith("__Host-") && (!secure || attributeValue("path") !== "/" || attributeValue("domain") !== undefined)) return false;
+  return true;
+}
+
 function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
   if (!https) return { id: "tls", title: "Certificat TLS", status: "fail", points: 0, maxPoints: 10, observation: "Aucun certificat TLS n’est utilisé.", recommendation: "Installez un certificat TLS reconnu et configurez son renouvellement automatique." };
   const expiry = tls?.validTo ? new Date(tls.validTo) : undefined;
@@ -89,8 +107,8 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const frameProtected = /^(deny|sameorigin)$/i.test(response.headers.get("x-frame-options") ?? "") || /frame-ancestors\s+[^;]+/i.test(csp);
   add(findings, { id: "frame-protection", title: "Protection anti-clickjacking", status: frameProtected ? "pass" : "warning", points: frameProtected ? 5 : 0, maxPoints: 5, observation: frameProtected ? "Une directive anti-clickjacking valide a été observée." : "Aucune protection anti-clickjacking claire n’a été observée.", recommendation: frameProtected ? "Aucune action prioritaire." : "Ajoutez frame-ancestors dans la CSP ou X-Frame-Options." });
 
-  const cookieIssues = response.cookies.filter((cookie) => !/;\s*secure(?:;|$)/i.test(cookie) || !/;\s*httponly(?:;|$)/i.test(cookie) || !/;\s*samesite=(strict|lax|none)(?:;|$)/i.test(cookie));
-  add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 3 : 10, maxPoints: 10, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans protection complète Secure, HttpOnly et SameSite.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Ajoutez Secure, HttpOnly et un SameSite adapté aux cookies sensibles." : "Contrôlez aussi les cookies créés après authentification." });
+  const cookieIssues = response.cookies.filter((cookie) => !cookieIsProtected(cookie, https));
+  add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 3 : 10, maxPoints: 10, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans transport ou attributs de protection complets.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Utilisez HTTPS, Secure, HttpOnly, un SameSite adapté et respectez les contraintes des préfixes __Host- ou __Secure-." : "Contrôlez aussi les cookies créés après authentification." });
 
   const html = response.headers.get("content-type")?.includes("text/html") ? response.body : "";
   const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map(([tag]) => tag);
