@@ -79,6 +79,18 @@ function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
   };
 }
 
+function analyzeHsts(header: string, https: boolean): Finding {
+  const maxAgeMatch = header.match(/(?:^|;)\s*max-age\s*=\s*(\d+)\s*(?:;|$)/i);
+  const maxAge = maxAgeMatch ? Number(maxAgeMatch[1]) : undefined;
+  const strong = https && maxAge !== undefined && maxAge >= 15_552_000;
+  const partial = https && maxAge !== undefined && maxAge > 0;
+  return {
+    id: "strict-transport-security", title: "HSTS", status: strong ? "pass" : partial ? "warning" : "fail", points: strong ? 10 : partial ? 5 : 0, maxPoints: 10,
+    observation: !https ? "HSTS ne peut pas être activé par une réponse HTTP." : strong ? "HSTS impose HTTPS pendant au moins 180 jours." : partial ? "HSTS est actif mais sa durée est inférieure à 180 jours." : header ? "HSTS est invalide ou désactivé par max-age=0." : "HSTS n’a pas été observé.",
+    recommendation: strong ? "Envisagez includeSubDomains après validation de tous les sous-domaines." : "Servez le site via HTTPS et ajoutez Strict-Transport-Security avec un max-age d’au moins 15552000.",
+  };
+}
+
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
@@ -86,9 +98,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   add(findings, analyzeTls(response.tls, https));
 
   const hsts = response.headers.get("strict-transport-security") ?? "";
-  const hstsAge = Number(hsts.match(/max-age\s*=\s*(\d+)/i)?.[1] ?? 0);
-  const strongHsts = https && hstsAge >= 15_552_000;
-  add(findings, { id: "strict-transport-security", title: "HSTS", status: strongHsts ? "pass" : hsts ? "warning" : "fail", points: strongHsts ? 10 : hsts ? 5 : 0, maxPoints: 10, observation: strongHsts ? "HSTS impose HTTPS pendant au moins 180 jours." : hsts ? "HSTS est présent mais sa durée est trop courte ou invalide." : "HSTS n’a pas été observé.", recommendation: strongHsts ? "Envisagez includeSubDomains après validation de tous les sous-domaines." : "Ajoutez Strict-Transport-Security avec un max-age d’au moins 15552000." });
+  add(findings, analyzeHsts(hsts, https));
 
   const csp = response.headers.get("content-security-policy") ?? "";
   const weakCsp = /unsafe-inline|\*\s*(?:;|$)/i.test(csp) || !/default-src|script-src/i.test(csp);

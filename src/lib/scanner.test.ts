@@ -48,6 +48,17 @@ describe("analyzeResponse", () => {
   it("refuse de valider des cookies reçus sur HTTP malgré leurs attributs", () => {
     const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), tls: undefined }));
     expect(findings.find((item) => item.id === "cookies")).toMatchObject({ status: "warning", points: 3 });
+    expect(findings.find((item) => item.id === "strict-transport-security")).toMatchObject({ status: "fail", points: 0 });
+  });
+  it("distingue HSTS désactivé d’une durée insuffisante", () => {
+    const disabledHeaders = response().headers;
+    disabledHeaders.set("strict-transport-security", "max-age=0");
+    const disabled = analyzeResponse(new URL("https://example.com"), response({ headers: disabledHeaders }));
+    expect(disabled.find((item) => item.id === "strict-transport-security")).toMatchObject({ status: "fail", points: 0 });
+    const shortHeaders = response().headers;
+    shortHeaders.set("strict-transport-security", "max-age=86400");
+    const short = analyzeResponse(new URL("https://example.com"), response({ headers: shortHeaders }));
+    expect(short.find((item) => item.id === "strict-transport-security")).toMatchObject({ status: "warning", points: 5 });
   });
   it("applique les contraintes des préfixes de cookies", () => {
     const valid = analyzeResponse(new URL("https://example.com"), response({ cookies: ["__Host-session=abc; Secure; HttpOnly; SameSite=Strict; Path=/"] }));
