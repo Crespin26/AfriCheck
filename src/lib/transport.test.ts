@@ -62,6 +62,15 @@ describe("fetchWebsite", () => {
     await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options({ timeoutMs: 20 }))).rejects.toThrow("trop de temps");
   });
 
+  it("partage un délai absolu entre toutes les redirections", async () => {
+    server.on("request", (request, response) => setTimeout(() => {
+      const count = Number(request.url?.slice(1) || 0);
+      if (count < 2) { response.writeHead(302, { location: `/${count + 1}` }); response.end(); return; }
+      response.end("late");
+    }, 45));
+    await expect(fetchWebsite(new URL(`http://public.example:${port}/0`), options({ timeoutMs: 80 }))).rejects.toMatchObject({ code: "REQUEST_TIMEOUT" });
+  });
+
   it("interrompt aussi une résolution DNS bloquée", async () => {
     const resolveAddress = () => new Promise<never>(() => undefined);
     await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options({ timeoutMs: 20, resolveAddress }))).rejects.toThrow("résolution DNS");

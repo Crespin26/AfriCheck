@@ -112,9 +112,12 @@ async function requestOnce(url: URL, options: RequiredTransportOptions): Promise
 
 export async function fetchWebsite(initial: URL, overrides: TransportOptions = {}): Promise<ScanResponse> {
   const options = optionsWithDefaults(overrides);
+  const started = Date.now();
   let current = initial;
   for (let count = 0; count <= options.maxRedirects; count += 1) {
-    const response = await requestOnce(current, options);
+    const remainingMs = options.timeoutMs - (Date.now() - started);
+    if (remainingMs <= 0) throw new ScanError("REQUEST_TIMEOUT", "Le site met trop de temps à répondre.", 504);
+    const response = await requestOnce(current, { ...options, timeoutMs: remainingMs });
     if (!REDIRECTS.has(response.status)) return { ...response, finalUrl: current };
     const location = response.headers.get("location");
     if (!location) return { ...response, finalUrl: current };
