@@ -15,7 +15,7 @@ function response(overrides: Partial<ScanResponse> = {}): ScanResponse {
       "content-security-policy": "default-src 'self'; frame-ancestors 'none'",
       "x-content-type-options": "nosniff",
       "referrer-policy": "strict-origin-when-cross-origin",
-      "permissions-policy": "camera=(), microphone=()",
+      "permissions-policy": "camera=(), microphone=(), geolocation=(), payment=(), usb=()",
     }),
     cookies: ["session=abc; Secure; HttpOnly; SameSite=Lax"], body: "<html></html>",
     tls: { authorized: true, validTo: future, protocol: "TLSv1.3" }, ...overrides,
@@ -118,5 +118,11 @@ describe("analyzeResponse", () => {
     headers.set("referrer-policy", "no-referrer-when-downgrade");
     const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
     expect(findings.find((item) => item.id === "referrer-policy")).toMatchObject({ status: "warning", points: 0 });
+  });
+  it("signale une Permissions-Policy incomplète ou ouverte", () => {
+    const headers = response().headers;
+    headers.set("permissions-policy", "camera=*, microphone=()");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "permissions-policy")).toMatchObject({ status: "warning", points: 0 });
   });
 });

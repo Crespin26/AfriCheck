@@ -117,6 +117,26 @@ function analyzeReferrerPolicy(header: string): Finding {
   };
 }
 
+function analyzePermissionsPolicy(header: string): Finding {
+  const directives = new Map<string, string>();
+  let invalid = false;
+  for (const rawDirective of header.split(",")) {
+    const match = rawDirective.trim().match(/^([a-z][a-z0-9-]*)\s*=\s*(\([^)]*\)|\*)$/i);
+    if (!match || directives.has(match[1].toLowerCase())) { invalid = true; continue; }
+    directives.set(match[1].toLowerCase(), match[2].toLowerCase());
+  }
+  const sensitive = ["camera", "microphone", "geolocation", "payment", "usb"];
+  const restrictive = Boolean(header) && !invalid && sensitive.every((feature) => {
+    const allowlist = directives.get(feature);
+    return allowlist !== undefined && !allowlist.includes("*");
+  });
+  return {
+    id: "permissions-policy", title: "Permissions-Policy", status: restrictive ? "pass" : "warning", points: restrictive ? 3 : 0, maxPoints: 3,
+    observation: restrictive ? "Les capacités sensibles principales sont limitées explicitement." : header ? "La politique ne limite pas explicitement toutes les capacités sensibles principales." : "Aucune politique de permissions n’a été observée.",
+    recommendation: restrictive ? "Réévaluez cette liste lorsque les fonctionnalités du site évoluent." : "Limitez au minimum camera, microphone, geolocation, payment et usb sans joker.",
+  };
+}
+
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
@@ -135,8 +155,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
 
   add(findings, analyzeReferrerPolicy(response.headers.get("referrer-policy") ?? ""));
 
-  const permissions = response.headers.get("permissions-policy");
-  add(findings, { id: "permissions-policy", title: "Permissions-Policy", status: permissions ? "pass" : "warning", points: permissions ? 3 : 0, maxPoints: 3, observation: permissions ? "Une politique de permissions est définie." : "Aucune politique de permissions n’a été observée.", recommendation: permissions ? "Vérifiez qu’elle désactive les fonctions inutilisées." : "Désactivez les fonctions du navigateur inutilisées." });
+  add(findings, analyzePermissionsPolicy(response.headers.get("permissions-policy") ?? ""));
 
   const frameProtected = /^(deny|sameorigin)$/i.test(response.headers.get("x-frame-options") ?? "") || /frame-ancestors\s+[^;]+/i.test(csp);
   add(findings, { id: "frame-protection", title: "Protection anti-clickjacking", status: frameProtected ? "pass" : "warning", points: frameProtected ? 5 : 0, maxPoints: 5, observation: frameProtected ? "Une directive anti-clickjacking valide a été observée." : "Aucune protection anti-clickjacking claire n’a été observée.", recommendation: frameProtected ? "Aucune action prioritaire." : "Ajoutez frame-ancestors dans la CSP ou X-Frame-Options." });
