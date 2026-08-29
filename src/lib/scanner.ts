@@ -137,6 +137,14 @@ function analyzePermissionsPolicy(header: string): Finding {
   };
 }
 
+function cspFrameProtection(header: string): boolean | undefined {
+  const directive = header.split(";").map((value) => value.trim()).find((value) => /^frame-ancestors(?:\s|$)/i.test(value));
+  if (directive === undefined) return undefined;
+  const [, ...sources] = directive.split(/\s+/);
+  const broadSources = new Set(["*", "http:", "https:", "data:"]);
+  return sources.length > 0 && sources.every((source) => !broadSources.has(source.toLowerCase()));
+}
+
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
@@ -157,7 +165,8 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
 
   add(findings, analyzePermissionsPolicy(response.headers.get("permissions-policy") ?? ""));
 
-  const frameProtected = /^(deny|sameorigin)$/i.test(response.headers.get("x-frame-options") ?? "") || /frame-ancestors\s+[^;]+/i.test(csp);
+  const cspFrameProtected = cspFrameProtection(csp);
+  const frameProtected = cspFrameProtected ?? /^(deny|sameorigin)$/i.test(response.headers.get("x-frame-options") ?? "");
   add(findings, { id: "frame-protection", title: "Protection anti-clickjacking", status: frameProtected ? "pass" : "warning", points: frameProtected ? 5 : 0, maxPoints: 5, observation: frameProtected ? "Une directive anti-clickjacking valide a été observée." : "Aucune protection anti-clickjacking claire n’a été observée.", recommendation: frameProtected ? "Aucune action prioritaire." : "Ajoutez frame-ancestors dans la CSP ou X-Frame-Options." });
 
   const cookieIssues = response.cookies.filter((cookie) => !cookieIsProtected(cookie, https));

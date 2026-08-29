@@ -125,4 +125,17 @@ describe("analyzeResponse", () => {
     const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
     expect(findings.find((item) => item.id === "permissions-policy")).toMatchObject({ status: "warning", points: 0 });
   });
+  it("ne laisse pas X-Frame-Options masquer une directive frame-ancestors ouverte", () => {
+    const headers = response().headers;
+    headers.set("content-security-policy", "default-src 'self'; frame-ancestors *");
+    headers.set("x-frame-options", "DENY");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "frame-protection")).toMatchObject({ status: "warning", points: 0 });
+  });
+  it("accepte une origine frame-ancestors explicitement bornée", () => {
+    const headers = response().headers;
+    headers.set("content-security-policy", "default-src 'self'; frame-ancestors 'self' https://admin.example.com");
+    const findings = analyzeResponse(new URL("https://example.com"), response({ headers }));
+    expect(findings.find((item) => item.id === "frame-protection")).toMatchObject({ status: "pass", points: 5 });
+  });
 });
