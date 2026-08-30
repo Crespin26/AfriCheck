@@ -121,8 +121,14 @@ export async function fetchWebsite(initial: URL, overrides: TransportOptions = {
     if (!REDIRECTS.has(response.status)) return { ...response, finalUrl: current };
     const location = response.headers.get("location");
     if (!location) return { ...response, finalUrl: current };
-    current = new URL(location, current);
-    if (!["http:", "https:"].includes(current.protocol)) throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée.");
+    const next = new URL(location, current);
+    if (
+      !["http:", "https:"].includes(next.protocol)
+      || next.username
+      || next.password
+      || next.port !== current.port
+    ) throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée.");
+    current = next;
   }
   throw new ScanError("TOO_MANY_REDIRECTS", "Le site effectue trop de redirections.", 502);
 }

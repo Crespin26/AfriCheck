@@ -52,6 +52,14 @@ describe("fetchWebsite", () => {
     await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options({ resolveAddress }))).rejects.toThrow("n’est pas autorisée");
   });
 
+  it("refuse une redirection qui introduit des identifiants ou change de port", async () => {
+    for (const location of [`http://public.example:8080/private`, `http://user:password@public.example:${port}/private`]) {
+      server.removeAllListeners("request");
+      server.on("request", (_request, response) => { response.writeHead(302, { location }); response.end(); });
+      await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options())).rejects.toMatchObject({ code: "INVALID_REDIRECT" });
+    }
+  });
+
   it("arrête une réponse qui dépasse la limite", async () => {
     server.on("request", (_request, response) => response.end("x".repeat(101)));
     await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options({ maxBodyBytes: 100 }))).rejects.toThrow("trop volumineuse");

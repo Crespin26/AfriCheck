@@ -100,7 +100,7 @@ Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de dépl
 - `src/lib/transport.ts` : connexion avec adresse IP épinglée, limites et collecte TLS.
 - `src/lib/scan-history.ts` : persistance PostgreSQL paramétrée et rétention des diagnostics vérifiés.
 
-Le transport réapplique la validation réseau à chaque redirection, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes pour l’ensemble de la navigation, redirections comprises. Une instance n’exécute que quatre diagnostics réseau simultanés par défaut et refuse rapidement la surcharge avec `503` et `Retry-After`. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
+Le transport réapplique la validation réseau à chaque redirection, refuse qu’une redirection introduise des identifiants ou change de port, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes pour l’ensemble de la navigation, redirections comprises. Une instance n’exécute que quatre diagnostics réseau simultanés par défaut et refuse rapidement la surcharge avec `503` et `Retry-After`. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
 
 ## Limites connues
 
