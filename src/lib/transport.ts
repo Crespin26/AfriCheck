@@ -121,7 +121,9 @@ export async function fetchWebsite(initial: URL, overrides: TransportOptions = {
     if (!REDIRECTS.has(response.status)) return { ...response, finalUrl: current };
     const location = response.headers.get("location");
     if (!location) return { ...response, finalUrl: current };
-    const next = new URL(location, current);
+    let next: URL;
+    try { next = new URL(location, current); }
+    catch { throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée."); }
     if (
       !["http:", "https:"].includes(next.protocol)
       || next.username

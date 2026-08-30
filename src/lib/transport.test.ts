@@ -60,6 +60,11 @@ describe("fetchWebsite", () => {
     }
   });
 
+  it("classe une destination Location invalide comme une redirection interdite", async () => {
+    server.on("request", (_request, response) => { response.writeHead(302, { location: "http://[" }); response.end(); });
+    await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options())).rejects.toMatchObject({ code: "INVALID_REDIRECT" });
+  });
+
   it("arrête une réponse qui dépasse la limite", async () => {
     server.on("request", (_request, response) => response.end("x".repeat(101)));
     await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options({ maxBodyBytes: 100 }))).rejects.toThrow("trop volumineuse");
