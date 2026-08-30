@@ -45,6 +45,27 @@ describe("analyzeResponse", () => {
     expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("fail");
     expect(findings.find((item) => item.id === "cookies")?.status).toBe("warning");
   });
+  it("analyse aussi les types HTML avec paramètres, casse différente ou XHTML", () => {
+    for (const contentType of ["Text/HTML; Charset=UTF-8", "application/xhtml+xml; charset=utf-8"]) {
+      const headers = response().headers;
+      headers.set("content-type", contentType);
+      const findings = analyzeResponse(new URL("https://example.com"), response({
+        headers,
+        body: '<form action="http://example.com/login"><img src="http://cdn.example.com/logo.png">',
+      }));
+      expect(findings.find((item) => item.id === "forms")?.status).toBe("fail");
+      expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("fail");
+    }
+  });
+  it("n’interprète pas une réponse non HTML comme une page", () => {
+    const headers = response().headers;
+    headers.set("content-type", "application/json");
+    const findings = analyzeResponse(new URL("https://example.com"), response({
+      headers,
+      body: '{"markup":"<form action=\\"http://example.com/login\\">"}',
+    }));
+    expect(findings.find((item) => item.id === "forms")?.status).toBe("pass");
+  });
   it("refuse de valider des cookies reçus sur HTTP malgré leurs attributs", () => {
     const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), tls: undefined }));
     expect(findings.find((item) => item.id === "cookies")).toMatchObject({ status: "warning", points: 3 });

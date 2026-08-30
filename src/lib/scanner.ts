@@ -15,6 +15,11 @@ export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "
 
 function add(findings: Finding[], finding: Finding) { findings.push(finding); }
 
+function isHtmlContentType(header: string | null): boolean {
+  const mediaType = header?.split(";", 1)[0].trim().toLowerCase();
+  return mediaType === "text/html" || mediaType === "application/xhtml+xml";
+}
+
 function attributeValues(tag: string, attribute: string): string[] {
   const expression = new RegExp(`\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "gi");
   return [...tag.matchAll(expression)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
@@ -172,7 +177,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const cookieIssues = response.cookies.filter((cookie) => !cookieIsProtected(cookie, https));
   add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 3 : 10, maxPoints: 10, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans transport ou attributs de protection complets.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Utilisez HTTPS, Secure, HttpOnly, un SameSite adapté et respectez les contraintes des préfixes __Host- ou __Secure-." : "Contrôlez aussi les cookies créés après authentification." });
 
-  const html = response.headers.get("content-type")?.includes("text/html") ? response.body : "";
+  const html = isHtmlContentType(response.headers.get("content-type")) ? response.body : "";
   const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map(([tag]) => tag);
   const insecureForms = forms.filter((tag) => {
     if (!https) return true;
