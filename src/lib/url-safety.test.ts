@@ -7,8 +7,13 @@ describe("normalizeUrl", () => {
 });
 
 describe("isPublicIp", () => {
-  it.each(["127.0.0.1", "10.0.0.1", "100.64.0.1", "169.254.169.254", "192.168.1.1", "::1", "::ffff:127.0.0.1", "fe80::1", "fc00::1"])("bloque %s", (address) => expect(isPublicIp(address)).toBe(false));
-  it.each(["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111"])("accepte %s", (address) => expect(isPublicIp(address)).toBe(true));
+  it.each([
+    "127.0.0.1", "10.0.0.1", "100.64.0.1", "169.254.169.254", "192.168.1.1",
+    "239.255.255.255", "240.0.0.1", "255.255.255.255",
+    "::1", "::ffff:127.0.0.1", "64:ff9b::c0a8:1", "64:ff9b:1::c0a8:1",
+    "2001::1", "2002:c0a8:1::", "fe80::1", "fc00::1",
+  ])("bloque %s", (address) => expect(isPublicIp(address)).toBe(false));
+  it.each(["1.1.1.1", "8.8.8.8", "2606:4700:4700::1111", "2001:3::1", "2001:4860:4860::8888"])("accepte %s", (address) => expect(isPublicIp(address)).toBe(true));
 });
 
 describe("resolvePublicUrl", () => {
