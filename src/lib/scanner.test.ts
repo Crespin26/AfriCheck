@@ -94,6 +94,13 @@ describe("analyzeResponse", () => {
     expect(unsafe.find((item) => item.id === "mixed-content")).toMatchObject({ status: "fail", points: 0 });
     expect(unsafe.find((item) => item.id === "mixed-content")?.observation).toContain("4 ressource(s)");
   });
+  it("détecte les imports CSS HTTP sans compter deux fois la forme url()", () => {
+    const findings = analyzeResponse(new URL("https://example.com"), response({
+      body: '<style>@import "http://cdn.example.com/theme.css"; @import url(http://cdn.example.com/print.css);</style>',
+    }));
+    expect(findings.find((item) => item.id === "mixed-content")).toMatchObject({ status: "fail", points: 0 });
+    expect(findings.find((item) => item.id === "mixed-content")?.observation).toContain("2 ressource(s)");
+  });
   it("considère tous les formulaires d’une page HTTP comme non chiffrés", () => {
     const headers = response().headers;
     headers.delete("strict-transport-security");

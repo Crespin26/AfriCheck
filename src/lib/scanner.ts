@@ -49,6 +49,9 @@ function countMixedContent(html: string, baseUrl: URL): number {
     for (const match of css.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)/gi)) {
       if (isHttp(match[1] ?? match[2] ?? match[3] ?? "")) count += 1;
     }
+    for (const match of css.matchAll(/@import\s+(?:"([^"]*)"|'([^']*)')/gi)) {
+      if (isHttp(match[1] ?? match[2] ?? "")) count += 1;
+    }
   }
   return count;
 }
