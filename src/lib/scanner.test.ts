@@ -116,6 +116,13 @@ describe("analyzeResponse", () => {
     const nonWeb = analyzeResponse(new URL("https://example.com"), response({ body: '<form action="mailto:contact@example.com">' }));
     expect(nonWeb.find((item) => item.id === "forms")?.status).toBe("fail");
   });
+  it("ignore les attributs data-* qui ne chargent ni ressource ni formulaire", () => {
+    const findings = analyzeResponse(new URL("https://example.com"), response({
+      body: '<img data-src="http://example.com/lazy.png"><form data-action="http://example.com/login">',
+    }));
+    expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("pass");
+    expect(findings.find((item) => item.id === "forms")?.status).toBe("pass");
+  });
   it("signale un certificat expiré et une CSP permissive", () => {
     const headers = response().headers;
     headers.set("content-security-policy", "default-src * 'unsafe-inline'");

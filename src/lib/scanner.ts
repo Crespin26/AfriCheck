@@ -21,7 +21,7 @@ function isHtmlContentType(header: string | null): boolean {
 }
 
 function attributeValues(tag: string, attribute: string): string[] {
-  const expression = new RegExp(`\\b${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "gi");
+  const expression = new RegExp(`\\s${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "gi");
   return [...tag.matchAll(expression)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
 }
 
@@ -184,8 +184,7 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map(([tag]) => tag);
   const insecureForms = forms.filter((tag) => {
     if (!https) return true;
-    const action = tag.match(/\baction\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i);
-    const target = action?.[1] ?? action?.[2] ?? action?.[3];
+    const target = attributeValues(tag, "action")[0];
     if (!target) return false;
     try { return new URL(target, response.finalUrl).protocol !== "https:"; }
     catch { return true; }

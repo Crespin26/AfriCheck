@@ -1,3 +1,6 @@
 export async function GET() {
-  return Response.json({ status: "ok" }, { headers: { "cache-control": "no-store" } });
+  return Response.json(
+    { status: "ok" },
+    { headers: { "cache-control": "no-store" } },
+  );
 }
