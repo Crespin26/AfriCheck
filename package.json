@@ -20,13 +20,13 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
-    "@types/node": "^20",
+    "@types/node": "^26",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",
     "@types/react-dom": "^19",
-    "eslint": "^9",
+    "eslint": "^10",
     "eslint-config-next": "16.3.5",
-    "typescript": "^5",
-    "vitest": "^4.1.11"
+    "typescript": "^7",
+    "vitest": "^5.0.1"
   }
 }
