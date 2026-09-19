@@ -13,7 +13,7 @@
     "ci": "npm test && npm run lint && npm run build"
   },
   "dependencies": {
-    "next": "16.3.2",
+    "next": "16.3.5",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.0",
     "react": "19.2.8",
@@ -25,7 +25,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.2",
+    "eslint-config-next": "16.3.5",
     "typescript": "^5",
     "vitest": "^4.1.11"
   }
