@@ -80,6 +80,29 @@ jobs:
         run: docker compose config --quiet
       - name: Build container image
         run: docker build --tag africheck:ci .
+      - name: Smoke test hardened container
+        run: |
+          container_id="$(docker run --detach --read-only --tmpfs /tmp:size=64m,mode=1777 --cap-drop ALL --security-opt no-new-privileges --publish 127.0.0.1:3000:3000 africheck:ci)"
+          cleanup() {
+            docker logs "$container_id" || true
+            docker rm --force "$container_id" >/dev/null || true
+          }
+          trap cleanup EXIT
+
+          for attempt in $(seq 1 30); do
+            health="$(docker inspect --format '{{.State.Health.Status}}' "$container_id")"
+            if [ "$health" = "healthy" ]; then
+              break
+            fi
+            if [ "$health" = "unhealthy" ] || [ "$attempt" -eq 30 ]; then
+              echo "Container healthcheck failed with status: $health" >&2
+              exit 1
+            fi
+            sleep 2
+          done
+
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/health | grep --fixed-strings '"status":"ok"'
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/ready | grep --fixed-strings '"status":"ready"'
       - name: Scan container vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
