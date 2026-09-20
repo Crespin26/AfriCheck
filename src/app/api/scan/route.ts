@@ -17,6 +17,7 @@ import { normalizeUrl } from "@/lib/url-safety";
 import { saveScanHistory } from "@/lib/scan-history";
 import { DatabaseConfigurationError } from "@/lib/database";
 import { ConcurrencyGate, scanConcurrencyLimit } from "@/lib/concurrency-gate";
+import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 
 const limiter = new HybridRateLimiter("scan", 5, 10 * 60 * 1000);
 const scanGate = new ConcurrencyGate(scanConcurrencyLimit());
@@ -65,16 +66,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const declaredSize = Number(request.headers.get("content-length") ?? 0);
-    if (declaredSize > MAX_REQUEST_BYTES)
-      return reject("La requête est trop volumineuse.", 413);
-    const rawBody = await request.text();
-    if (Buffer.byteLength(rawBody, "utf8") > MAX_REQUEST_BYTES)
-      return reject("La requête est trop volumineuse.", 413);
     let body: { url?: unknown; ownership?: unknown };
     try {
-      body = JSON.parse(rawBody) as { url?: unknown; ownership?: unknown };
-    } catch {
+      body = await readJsonBody(request, MAX_REQUEST_BYTES);
+    } catch (error) {
+      if (error instanceof RequestBodyError && error.code === "TOO_LARGE")
+        return reject("La requête est trop volumineuse.", 413);
       return reject("Le corps de la requête doit être un JSON valide.", 400);
     }
     if (typeof body.url !== "string")

@@ -3,6 +3,7 @@ import { domainVerificationKey, toDomainVerificationError, verifyOwnershipProof 
 import { createRequestId } from "@/lib/observability";
 import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
 import { HybridRateLimiter } from "@/lib/distributed-rate-limit";
+import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 import { listScanHistory } from "@/lib/scan-history";
 
 const limiter = new HybridRateLimiter("domain-history", 20, 10 * 60 * 1000);
@@ -15,13 +16,12 @@ export async function POST(request: Request) {
   const fail = (message: string, code: string, status: number) => Response.json({ error: message, code, requestId }, { status, headers });
   if (!decision.allowed) return fail("Trop de consultations demandées. Réessayez plus tard.", "RATE_LIMITED", 429);
   try {
-    const declaredSize = Number(request.headers.get("content-length") ?? 0);
-    if (declaredSize > MAX_REQUEST_BYTES) return fail("La requête est trop volumineuse.", "INVALID_REQUEST", 413);
-    const raw = await request.text();
-    if (Buffer.byteLength(raw, "utf8") > MAX_REQUEST_BYTES) return fail("La requête est trop volumineuse.", "INVALID_REQUEST", 413);
     let body: { proof?: unknown; clientSecret?: unknown };
-    try { body = JSON.parse(raw) as { proof?: unknown; clientSecret?: unknown }; }
-    catch { return fail("Le corps de la requête doit être un JSON valide.", "INVALID_REQUEST", 400); }
+    try { body = await readJsonBody(request, MAX_REQUEST_BYTES); }
+    catch (error) {
+      if (error instanceof RequestBodyError && error.code === "TOO_LARGE") return fail("La requête est trop volumineuse.", "INVALID_REQUEST", 413);
+      return fail("Le corps de la requête doit être un JSON valide.", "INVALID_REQUEST", 400);
+    }
     if (typeof body.proof !== "string" || typeof body.clientSecret !== "string") return fail("La preuve et le secret navigateur sont requis.", "INVALID_REQUEST", 400);
     databaseConfiguration();
     const verified = verifyOwnershipProof(body.proof, body.clientSecret, domainVerificationKey());

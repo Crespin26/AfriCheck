@@ -7,6 +7,7 @@ import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
 import { HybridRateLimiter } from "@/lib/distributed-rate-limit";
 import { createRequestId } from "@/lib/observability";
 import { displayHostname } from "@/lib/report";
+import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 
 const limiter = new HybridRateLimiter("report", 10, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 65_536;
@@ -34,16 +35,12 @@ export async function POST(request: Request) {
       { status: 429, headers },
     );
   try {
-    const declaredSize = Number(request.headers.get("content-length") ?? 0);
-    if (declaredSize > MAX_REQUEST_BYTES)
-      return error("Les données du rapport sont trop volumineuses.", 413);
-    const raw = await request.text();
-    if (Buffer.byteLength(raw, "utf8") > MAX_REQUEST_BYTES)
-      return error("Les données du rapport sont trop volumineuses.", 413);
     let parsed: unknown;
     try {
-      parsed = JSON.parse(raw);
-    } catch {
+      parsed = await readJsonBody(request, MAX_REQUEST_BYTES);
+    } catch (cause) {
+      if (cause instanceof RequestBodyError && cause.code === "TOO_LARGE")
+        return error("Les données du rapport sont trop volumineuses.", 413);
       return error("Les données du rapport sont invalides.", 400);
     }
     let input: ReportInput;

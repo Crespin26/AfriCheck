@@ -60,6 +60,25 @@ describe("POST /api/scan", () => {
     expect(response.status).toBe(413);
   });
 
+  it("interrompt et refuse un corps réel supérieur à 4 Ko", async () => {
+    const { POST } = await import("./route");
+    const request = new Request("https://app.test/api/scan", {
+      method: "POST",
+      body: new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array(4097));
+          controller.close();
+        },
+      }),
+      duplex: "half",
+    } as RequestInit & { duplex: "half" });
+
+    const response = await POST(request);
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "INVALID_REQUEST",
+    });
+  });
   it("retourne 429 et Retry-After après cinq demandes", async () => {
     const { POST } = await import("./route");
     const makeRequest = () =>
