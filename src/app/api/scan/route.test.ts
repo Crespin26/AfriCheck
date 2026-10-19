@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { verifyReportAuthorization } from "@/lib/report-authorization";
 import { scanWebsite } from "@/lib/scanner";
 import { ScanError } from "@/lib/errors";
 import { logScanEvent } from "@/lib/observability";
@@ -10,7 +11,10 @@ const verifyOwnershipProof = vi.fn(() => ({
 const saveScanHistory = vi.fn(async () => "history-1");
 
 vi.mock("@/lib/scanner", () => ({
-  scanWebsite: vi.fn(async (url: string) => ({ url, score: 80 })),
+  scanWebsite: vi.fn(async (url: string) => ({
+    url, finalUrl: "https://example.com/", scannedAt: "2026-10-19T10:00:00.000Z",
+    durationMs: 100, score: 80, grade: "B", findings: [],
+  })),
 }));
 vi.mock("@/lib/observability", () => ({
   createRequestId: () => "req-test",
@@ -33,6 +37,16 @@ beforeEach(() => {
 });
 
 describe("POST /api/scan", () => {
+  it("autorise l’export uniquement pour le résultat produit par le serveur", async () => {
+    const { POST } = await import("./route");
+    const response = await POST(new Request("https://app.test/api/scan", {
+      method: "POST", body: JSON.stringify({ url: "example.com" }),
+    }));
+    expect(response.status).toBe(200);
+    const result = await response.json();
+    expect(verifyReportAuthorization(result, result.reportAuthorization)).toBe(true);
+    expect(verifyReportAuthorization({ ...result, score: 100 }, result.reportAuthorization)).toBe(false);
+  });
   it("refuse un JSON invalide sans exposer l’erreur du parseur", async () => {
     const { POST } = await import("./route");
     const response = await POST(
@@ -104,7 +118,7 @@ describe("POST /api/scan", () => {
       });
       return {
         url,
-        finalUrl: url,
+        finalUrl: "https://example.com/",
         scannedAt: "2026-08-27T12:00:00.000Z",
         durationMs: 100,
         score: 80,

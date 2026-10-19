@@ -69,12 +69,19 @@ Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main
 - `TRUST_PROXY_HEADERS=true` : active l’identification par adresse transmise uniquement lorsque l’application est placée derrière un proxy de confiance qui remplace ces en-têtes ;
 - `LOG_HASH_KEY` : secret aléatoire d’au moins 32 caractères utilisé pour pseudonymiser l’identité réseau dans les journaux. Sans ce secret, aucune empreinte client n’est enregistrée.
 - `DOMAIN_VERIFICATION_KEY` : secret aléatoire d’au moins 32 caractères utilisé pour signer les challenges et preuves de contrôle de domaine. Sans ce secret, les endpoints de vérification restent désactivés ; une valeur trop courte fait échouer la readiness.
+- `REPORT_SIGNING_KEY` : secret distinct d’au moins 32 octets pour autoriser les exports PDF. Configurez la même valeur sur toutes les instances et conservez-la entre les redémarrages. Sans cette variable, une clé aléatoire propre au processus est utilisée pour les essais locaux ; redémarrer le serveur invalide alors les exports en attente.
 - `DATABASE_URL` : URL PostgreSQL dédiée à AfriCheck. Sans cette valeur, les scans restent disponibles mais l’historique est désactivé ;
 - `DATABASE_SSL=true|false` : active la validation TLS du serveur PostgreSQL. Utilisez `true` avec un service managé ou un réseau non privé ;
 - `HISTORY_RETENTION_DAYS` : conservation des rapports entre 1 et 365 jours, 90 par défaut.
 - `SCAN_MAX_CONCURRENCY` : nombre maximal de diagnostics réseau simultanés par instance, entre 1 et 32, 4 par défaut.
 
-Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secrets) et injectez-les à l’exécution. Ne réutilisez pas la même valeur pour `LOG_HASH_KEY` et `DOMAIN_VERIFICATION_KEY`.
+Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secrets) et injectez-les à l’exécution. Utilisez des valeurs différentes pour `LOG_HASH_KEY`, `DOMAIN_VERIFICATION_KEY` et `REPORT_SIGNING_KEY`.
+
+### Intégrité des exports PDF
+
+`POST /api/scan` retourne une `reportAuthorization` signée, valable une heure. Le navigateur la retransmet avec le résultat à `POST /api/report`. Le serveur vérifie le domaine, la date, la durée, le score, la note et tous les constats avant de générer le PDF. Un résultat modifié, une autorisation absente ou expirée est refusé avec `403 REPORT_UNAUTHORIZED` ; il faut alors relancer le diagnostic. Les clients API doivent conserver ce champ avec le résultat.
+
+Cette protection garantit que les données acceptées pour l’export proviennent du scanner. Elle n’est pas une signature numérique du fichier PDF téléchargé et ne permet pas de vérifier un fichier modifié après téléchargement.
 
 ### Vérification de contrôle d’un domaine
 
@@ -102,7 +109,7 @@ docker build -t africheck .
 docker run --rm -p 3000:3000 --env-file .env.production africheck
 ```
 
-Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`, `DOMAIN_VERIFICATION_KEY` et `LOG_HASH_KEY` dans l’environnement, puis lancez `docker compose up --build -d`. La base n’est pas exposée sur l’hôte, le conteneur applicatif retire ses capabilities Linux, utilise un système de fichiers en lecture seule et applique les migrations sous verrou avant de démarrer.
+Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`, `DOMAIN_VERIFICATION_KEY`, `REPORT_SIGNING_KEY` et `LOG_HASH_KEY` dans l’environnement, puis lancez `docker compose up --build -d`. La base n’est pas exposée sur l’hôte, le conteneur applicatif retire ses capabilities Linux, utilise un système de fichiers en lecture seule et applique les migrations sous verrou avant de démarrer.
 
 Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de déploiement avant de remplacer les instances. Sauvegardez régulièrement PostgreSQL et testez la restauration ; la rétention applicative ne remplace pas une politique de sauvegarde.
 

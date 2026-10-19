@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { createHmac } from "node:crypto";
 import { readFile } from "node:fs/promises";
 
 // Network diagnostics are simulated: these tests never scan a third-party site.
@@ -20,13 +21,25 @@ const diagnostic = {
   }],
 };
 
+function signedDiagnostic() {
+  const expiresAt = Date.now() + 3_600_000;
+  const report = {
+    finalUrl: diagnostic.finalUrl, scannedAt: diagnostic.scannedAt,
+    durationMs: diagnostic.durationMs, score: diagnostic.score,
+    grade: diagnostic.grade, findings: diagnostic.findings,
+  };
+  const signature = createHmac("sha256", "playwright-report-signing-key-at-least-32")
+    .update(JSON.stringify(["africheck-report-v1", expiresAt, report])).digest("base64url");
+  return { ...diagnostic, reportAuthorization: { expiresAt, signature } };
+}
+
 async function submit(page: Page) {
   await page.getByLabel("Adresse du site à analyser").fill("example.com");
   await page.getByRole("button", { name: "Analyser mon site" }).click();
 }
 
 test("affiche le diagnostic, ses recommandations et télécharge un vrai PDF", async ({ page }) => {
-  await page.route("**/api/scan", (route) => route.fulfill({ json: diagnostic }));
+  await page.route("**/api/scan", (route) => route.fulfill({ json: signedDiagnostic() }));
   await page.goto("/");
   await submit(page);
   await expect(page.getByRole("heading", { name: "Bonne base de sécurité" })).toBeVisible();
@@ -58,7 +71,7 @@ test("conserve la preuve du domaine et la transmet au diagnostic suivant", async
   let ownership: unknown;
   await page.route("**/api/scan", async (route) => {
     ownership = route.request().postDataJSON().ownership;
-    await route.fulfill({ json: diagnostic });
+    await route.fulfill({ json: signedDiagnostic() });
   });
   await page.route("**/api/domains/challenge", async (route) => {
     const body = route.request().postDataJSON();
@@ -88,4 +101,12 @@ test("conserve la preuve du domaine et la transmet au diagnostic suivant", async
   await submit(page);
   await expect(page.getByText("Domaine vérifié", { exact: true })).toBeVisible();
   expect(ownership).toEqual({ proof: proof.proof, clientSecret: verifiedSecret });
+});
+
+
+test("refuse réellement un export dont le score a été modifié", async ({ request }) => {
+  const result = signedDiagnostic();
+  const response = await request.post("/api/report", { data: { ...result, score: 100 } });
+  expect(response.status()).toBe(403);
+  expect(await response.json()).toMatchObject({ code: "REPORT_UNAUTHORIZED" });
 });

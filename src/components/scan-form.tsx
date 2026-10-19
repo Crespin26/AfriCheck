@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import type { ScanResult } from "@/lib/types";
+import type { ScanResult, ReportAuthorization } from "@/lib/types";
 import {
   displayHostname,
   findingSummary,
@@ -16,6 +16,7 @@ import {
 import styles from "./scan-form.module.css";
 
 type ScanWithHistory = ScanResult & {
+  reportAuthorization: ReportAuthorization;
   history?: {
     saved: boolean;
     id?: string;

@@ -1,3 +1,4 @@
+import { authorizeReport } from "@/lib/report-authorization";
 import { scanWebsite } from "@/lib/scanner";
 import { toPublicError } from "@/lib/errors";
 import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
@@ -124,6 +125,7 @@ export async function POST(request: Request) {
     } finally {
       release();
     }
+    const reportAuthorization = authorizeReport(result);
     let history:
       | {
           saved: boolean;
@@ -163,7 +165,7 @@ export async function POST(request: Request) {
       historyError: history?.code,
     });
     return Response.json(
-      { ...result, ...(history ? { history } : {}) },
+      { ...result, reportAuthorization, ...(history ? { history } : {}) },
       { headers: responseHeaders },
     );
   } catch (error) {

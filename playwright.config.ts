@@ -22,6 +22,7 @@ export default defineConfig({
       DATABASE_URL: "",
       LOG_HASH_KEY: "",
       DOMAIN_VERIFICATION_KEY: "",
+      REPORT_SIGNING_KEY: "playwright-report-signing-key-at-least-32",
       TRUST_PROXY_HEADERS: "false",
     },
   },

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { authorizeReport } from "@/lib/report-authorization";
 import { generateReportPdf } from "@/lib/pdf-report";
 
 vi.mock("@/lib/observability", () => ({
@@ -17,12 +18,12 @@ const payload = {
   scannedAt: "2026-08-27T12:00:00.000Z",
   durationMs: 1000,
   score: 80,
-  grade: "B",
+  grade: "B" as const,
   findings: [
     {
       id: "https",
       title: "HTTPS",
-      status: "pass",
+      status: "pass" as const,
       points: 10,
       maxPoints: 10,
       observation: "Connexion chiffree.",
@@ -42,7 +43,7 @@ describe("POST /api/report", () => {
     const response = await POST(
       new Request("https://app.test/api/report", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, reportAuthorization: authorizeReport(payload) }),
       }),
     );
     expect(response.status).toBe(200);
@@ -65,6 +66,19 @@ describe("POST /api/report", () => {
       code: "INVALID_REPORT",
     });
   });
+  it.each(["absente", "modifiée", "expirée"])("refuse une autorisation %s avant de générer le PDF", async (scenario) => {
+    const { POST } = await import("./route");
+    const authorization = authorizeReport(payload, undefined, scenario === "expirée" ? Date.now() - 3_600_001 : Date.now());
+    const response = await POST(new Request("https://app.test/api/report", {
+      method: "POST", body: JSON.stringify({ ...payload,
+        ...(scenario === "modifiée" ? { score: 100 } : {}),
+        ...(scenario === "absente" ? {} : { reportAuthorization: authorization }),
+      }),
+    }));
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toMatchObject({ code: "REPORT_UNAUTHORIZED" });
+    expect(generateReportPdf).not.toHaveBeenCalled();
+  });
   it("distingue une panne interne de génération", async () => {
     vi.mocked(generateReportPdf).mockRejectedValueOnce(
       new Error("internal path"),
@@ -73,7 +87,7 @@ describe("POST /api/report", () => {
     const response = await POST(
       new Request("https://app.test/api/report", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, reportAuthorization: authorizeReport(payload) }),
       }),
     );
     expect(response.status).toBe(500);

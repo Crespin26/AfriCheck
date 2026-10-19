@@ -5,6 +5,10 @@ describe("readiness", () => {
   it("accepte une configuration vide et signale les fonctions optionnelles", () => expect(readiness({}, "24.16.0")).toEqual({ ready: true, checks: { runtime: "ok", configuration: "ok", domainVerification: "disabled", history: "disabled" } }));
   it("rejette un runtime trop ancien", () => expect(readiness({}, "20.8.0")).toMatchObject({ ready: false, checks: { runtime: "error" } }));
   it("rejette une clé de pseudonymisation trop courte", () => expect(readiness({ LOG_HASH_KEY: "short" }, "24.0.0")).toMatchObject({ ready: false, checks: { configuration: "error" } }));
+  it("rejette une clé de signature de rapport trop courte", () => {
+    expect(readiness({ REPORT_SIGNING_KEY: "short" }, "24.0.0")).toMatchObject({ ready: false, checks: { configuration: "error" } });
+    expect(readiness({ REPORT_SIGNING_KEY: "k".repeat(32) }, "24.0.0").ready).toBe(true);
+  });
   it("rejette une valeur proxy ambiguë", () => expect(readiness({ TRUST_PROXY_HEADERS: "yes" }, "24.0.0")).toMatchObject({ ready: false, checks: { configuration: "error" } }));
   it("borne la concurrence des scans", () => {
     expect(readiness({ SCAN_MAX_CONCURRENCY: "8" }, "24.0.0")).toMatchObject({ ready: true, checks: { configuration: "ok" } });

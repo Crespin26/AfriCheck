@@ -3,6 +3,7 @@ import {
   parseReportInput,
   type ReportInput,
 } from "@/lib/pdf-report";
+import { verifyReportAuthorization } from "@/lib/report-authorization";
 import { rateLimitHeaders, requestIdentity } from "@/lib/rate-limit";
 import { HybridRateLimiter } from "@/lib/distributed-rate-limit";
 import { createRequestId } from "@/lib/observability";
@@ -48,6 +49,13 @@ export async function POST(request: Request) {
       input = parseReportInput(parsed);
     } catch {
       return error("Les données du rapport sont invalides.", 400);
+    }
+    const authorization = (parsed as { reportAuthorization?: unknown }).reportAuthorization;
+    if (!verifyReportAuthorization(input, authorization)) {
+      return Response.json({
+        error: "Le rapport a été modifié ou son autorisation a expiré. Relancez le diagnostic.",
+        code: "REPORT_UNAUTHORIZED", requestId,
+      }, { status: 403, headers });
     }
     let pdf: Uint8Array;
     try {
