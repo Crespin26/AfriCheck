@@ -90,7 +90,7 @@ Cette protection garantit que les données acceptées pour l’export proviennen
 3. Le navigateur transmet le challenge et son secret à `POST /api/domains/verify`. AfriCheck récupère le fichier avec les protections anti-SSRF du scanner et retourne une preuve signée valable 30 jours.
 4. Lors des visites suivantes, l’interface revalide la preuve et le secret auprès de `POST /api/domains/proof` avant d’afficher le domaine comme vérifié.
 
-Ce parcours est disponible directement sous chaque rapport de diagnostic. La preuve est liée au secret conservé dans le navigateur : copier le fichier public ou modifier le stockage local ne permet donc pas à un tiers de revendiquer le domaine. Les trois endpoints sont limités en fréquence, n’acceptent que des corps de petite taille et renvoient des réponses non mises en cache.
+Ce parcours est disponible directement sous chaque rapport de diagnostic. Si le stockage local est bloqué, la preuve et le secret restent temporairement en mémoire dans la page ouverte ; un rechargement les perd. Une panne de l’historique ne remet pas en cause une vérification réussie. La preuve est liée au secret conservé dans le navigateur : copier le fichier public ou modifier le stockage local ne permet donc pas à un tiers de revendiquer le domaine. Les trois endpoints sont limités en fréquence, n’acceptent que des corps de petite taille et renvoient des réponses non mises en cache.
 
 Seuls les diagnostics lancés avec une preuve valide sont enregistrés. AfriCheck ne stocke dans PostgreSQL ni secret navigateur, ni preuve, ni empreinte réseau. Une redirection vers un autre domaine annule l’enregistrement. L’interface présente les 20 derniers scores non expirés du domaine.
 

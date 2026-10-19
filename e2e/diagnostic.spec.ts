@@ -110,3 +110,66 @@ test("refuse réellement un export dont le score a été modifié", async ({ req
   expect(response.status()).toBe(403);
   expect(await response.json()).toMatchObject({ code: "REPORT_UNAUTHORIZED" });
 });
+
+
+async function mockVerification(page: Page, historyUnavailable = false) {
+  const expiresAt = new Date(Date.now() + 86_400_000).toISOString();
+  const proof = { hostname: "example.com", proof: "temporary-proof", expiresAt };
+  const state = { secret: "", ownership: undefined as unknown };
+  await page.route("**/api/scan", (route) => {
+    state.ownership = route.request().postDataJSON().ownership;
+    return route.fulfill({ json: signedDiagnostic() });
+  });
+  await page.route("**/api/domains/challenge", (route) => route.fulfill({ status: 201, json: {
+    challenge: "temporary-challenge", hostname: "example.com", expiresAt,
+    verificationUrl: "https://example.com/.well-known/africheck-verification.txt",
+  } }));
+  await page.route("**/api/domains/verify", (route) => {
+    state.secret = route.request().postDataJSON().clientSecret;
+    return route.fulfill({ json: proof });
+  });
+  await page.route("**/api/domains/proof", (route) => route.fulfill({ json: { valid: true, hostname: proof.hostname } }));
+  await page.route("**/api/domains/history", (route) => historyUnavailable ? route.abort() : route.fulfill({ json: { history: [] } }));
+  return state;
+}
+
+for (const mode of ["accès", "écriture"]) {
+  test(`termine la vérification lorsque le stockage refuse l’${mode}`, async ({ page }) => {
+    const errors: string[] = [];
+    page.on("pageerror", (error) => errors.push(error.message));
+    await page.addInitScript((blockedMode) => {
+      if (blockedMode === "accès") {
+        Object.defineProperty(window, "localStorage", { get() { throw new DOMException("blocked", "SecurityError"); } });
+      } else {
+        Storage.prototype.setItem = () => { throw new DOMException("full", "QuotaExceededError"); };
+      }
+    }, mode);
+    const state = await mockVerification(page);
+    await page.goto("/");
+    await submit(page);
+    await page.getByRole("button", { name: "Vérifier ce domaine" }).click();
+    await expect(page.getByText("Le stockage local est bloqué", { exact: false })).toBeVisible();
+    await page.getByRole("button", { name: "J’ai publié le fichier" }).click();
+    await expect(page.getByText("Domaine vérifié", { exact: true })).toBeVisible();
+    await expect(page.getByText("La preuve reste disponible tant que cette page est ouverte.", { exact: false })).toBeVisible();
+    await submit(page);
+    await expect(page.getByText("Domaine vérifié", { exact: true })).toBeVisible();
+    expect(state.ownership).toEqual({ proof: "temporary-proof", clientSecret: state.secret });
+    await page.reload();
+    await submit(page);
+    await expect(page.getByRole("button", { name: "Vérifier ce domaine" })).toBeVisible();
+    expect(state.ownership).toBeUndefined();
+    expect(errors).toEqual([]);
+  });
+}
+
+test("conserve la vérification réussie si le chargement de l’historique échoue", async ({ page }) => {
+  await mockVerification(page, true);
+  await page.goto("/");
+  await submit(page);
+  await page.getByRole("button", { name: "Vérifier ce domaine" }).click();
+  await page.getByRole("button", { name: "J’ai publié le fichier" }).click();
+  await expect(page.getByText("Domaine vérifié", { exact: true })).toBeVisible();
+  await expect(page.getByText("L’historique n’est pas disponible sur cette instance.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "J’ai publié le fichier" })).toHaveCount(0);
+});

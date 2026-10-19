@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  browserStorage,
   createBrowserIdentity,
   readOwnershipProof,
   saveOwnershipProof,
@@ -27,7 +28,8 @@ async function responseData(
   response: Response,
 ): Promise<Record<string, unknown>> {
   try {
-    return (await response.json()) as Record<string, unknown>;
+    const data: unknown = await response.json();
+    return data && typeof data === "object" && !Array.isArray(data) ? data as Record<string, unknown> : {};
   } catch {
     return {};
   }
@@ -64,24 +66,27 @@ async function requestHistory(
   proof: string,
   clientSecret: string,
 ): Promise<HistoryItem[] | undefined> {
-  const response = await fetch("/api/domains/history", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ proof, clientSecret }),
-  });
-  if (!response.ok) return undefined;
-  const data = await responseData(response);
-  if (!Array.isArray(data.history)) return undefined;
-  return data.history.filter((item): item is HistoryItem =>
-    Boolean(
-      item &&
-      typeof item === "object" &&
-      typeof (item as HistoryItem).id === "string" &&
-      typeof (item as HistoryItem).scannedAt === "string" &&
-      typeof (item as HistoryItem).score === "number" &&
-      typeof (item as HistoryItem).grade === "string",
-    ),
-  );
+  try {
+    const response = await fetch("/api/domains/history", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ proof, clientSecret }),
+    });
+    if (!response.ok) return undefined;
+    const data = await responseData(response);
+    if (!Array.isArray(data.history)) return undefined;
+    return data.history.filter((item): item is HistoryItem =>
+      Boolean(
+        item &&
+        typeof item === "object" &&
+        typeof (item as HistoryItem).id === "string" &&
+        typeof (item as HistoryItem).scannedAt === "string" &&
+        Number.isFinite(Date.parse((item as HistoryItem).scannedAt)) &&
+        typeof (item as HistoryItem).score === "number" &&
+        typeof (item as HistoryItem).grade === "string",
+      ),
+    );
+  } catch { return undefined; }
 }
 
 export function DomainVerification({ targetUrl }: { targetUrl: string }) {
@@ -91,6 +96,8 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [proof, setProof] = useState<StoredOwnershipProof | null>(null);
+  const [persistentIdentity, setPersistentIdentity] = useState(true);
+  const [historyNotice, setHistoryNotice] = useState("");
   const [history, setHistory] = useState<HistoryItem[] | null>(null);
   const hostname = (() => {
     try {
@@ -102,9 +109,9 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      const stored = readOwnershipProof(window.localStorage, hostname);
+      const stored = readOwnershipProof(browserStorage(), hostname);
       if (!stored) return;
-      void createBrowserIdentity(window.localStorage, window.crypto)
+      void createBrowserIdentity(browserStorage(), window.crypto)
         .then(async (identity) => {
           const response = await fetch("/api/domains/proof", {
             method: "POST",
@@ -124,6 +131,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
                 identity.secret,
               );
               if (entries) setHistory(entries);
+              else setHistoryNotice("L’historique n’est pas disponible sur cette instance.");
             }
           }
         })
@@ -138,7 +146,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
     setNotice("");
     try {
       const identity = await createBrowserIdentity(
-        window.localStorage,
+        browserStorage(),
         window.crypto,
       );
       const response = await fetch("/api/domains/challenge", {
@@ -154,6 +162,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
       if (!isChallenge(data))
         throw new Error("La réponse du service de vérification est invalide.");
       setSecret(identity.secret);
+      setPersistentIdentity(identity.persistent);
       setChallenge(data);
       setPhase("ready");
       if (!identity.persistent)
@@ -218,13 +227,15 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
         throw new Error(errorMessage(data, "La vérification a échoué."));
       if (!isProof(data))
         throw new Error("La réponse du service de vérification est invalide.");
-      saveOwnershipProof(window.localStorage, data);
+      const saved = saveOwnershipProof(browserStorage(), data);
+      if (!saved || !persistentIdentity) setNotice("La preuve reste disponible tant que cette page est ouverte. Elle n’a pas pu être conservée sur cet appareil.");
       setProof(data);
       setPhase("verified");
       setChallenge(null);
       setSecret("");
       const entries = await requestHistory(data.proof, secret);
       if (entries) setHistory(entries);
+      else setHistoryNotice("L’historique n’est pas disponible sur cette instance.");
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "La vérification a échoué.",
@@ -249,6 +260,8 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
             </p>
           </div>
         </section>
+        {notice && <p className={styles.notice} role="status">{notice}</p>}
+        {historyNotice && <p className={styles.notice} role="status">{historyNotice}</p>}
         {history && (
           <section
             className={styles.history}

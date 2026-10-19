@@ -1,6 +1,8 @@
 import { createHash, webcrypto } from "node:crypto";
-import { describe, expect, it } from "vitest";
-import { CLIENT_SECRET_STORAGE_KEY, createBrowserIdentity, OWNERSHIP_PROOFS_STORAGE_KEY, readOwnershipProof, saveOwnershipProof } from "./browser-domain-identity";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { CLIENT_SECRET_STORAGE_KEY, browserStorage, createBrowserIdentity, OWNERSHIP_PROOFS_STORAGE_KEY, readOwnershipProof, saveOwnershipProof } from "./browser-domain-identity";
+
+afterEach(() => vi.unstubAllGlobals());
 
 class MemoryStorage implements Storage {
   private values = new Map<string, string>();
@@ -24,6 +26,10 @@ describe("identité locale de domaine", () => {
     expect(storage.getItem(CLIENT_SECRET_STORAGE_KEY)).toBe(first.secret);
   });
 
+  it("explique la nécessité de HTTPS lorsque Web Crypto n’est pas disponible", async () => {
+    await expect(createBrowserIdentity(new MemoryStorage(), {} as Crypto)).rejects.toThrow("connexion HTTPS");
+  });
+
   it("remplace une valeur locale mal formée", async () => {
     const storage = new MemoryStorage();
     storage.setItem(CLIENT_SECRET_STORAGE_KEY, "faible");
@@ -38,6 +44,35 @@ describe("identité locale de domaine", () => {
     const identity = await createBrowserIdentity(storage, webcrypto as Crypto);
     expect(identity.persistent).toBe(false);
     expect(identity.secret).toHaveLength(43);
+  });
+
+  it("protège aussi un navigateur qui refuse l’accès à localStorage lui-même", async () => {
+    vi.stubGlobal("window", Object.defineProperty({}, "localStorage", { get() { throw new Error("blocked"); } }));
+    const storage = browserStorage();
+    const first = await createBrowserIdentity(storage, webcrypto as Crypto);
+    expect(first.persistent).toBe(false);
+    expect(await createBrowserIdentity(browserStorage(), webcrypto as Crypto)).toEqual(first);
+  });
+
+  it("conserve temporairement le secret et la preuve si les écritures sont refusées", async () => {
+    const storage = new MemoryStorage();
+    storage.setItem = () => { throw new Error("quota"); };
+    const identity = await createBrowserIdentity(storage, webcrypto as Crypto);
+    expect(await createBrowserIdentity(storage, webcrypto as Crypto)).toEqual(identity);
+    const proof = { hostname: "example.com", proof: "signed-proof", expiresAt: "2030-01-01T00:00:00.000Z" };
+    expect(saveOwnershipProof(storage, proof)).toBe(false);
+    expect(readOwnershipProof(storage, proof.hostname)).toEqual(proof);
+    expect(readOwnershipProof(storage, proof.hostname, Date.UTC(2031, 0, 1))).toBeUndefined();
+  });
+
+  it("remplace un stockage de preuves corrompu et ignore une date invalide", () => {
+    const storage = new MemoryStorage();
+    storage.setItem(OWNERSHIP_PROOFS_STORAGE_KEY, JSON.stringify({ "example.com": { hostname: "example.com", proof: "invalid", expiresAt: "invalid" } }));
+    expect(readOwnershipProof(storage, "example.com")).toBeUndefined();
+    storage.setItem(OWNERSHIP_PROOFS_STORAGE_KEY, "{invalid");
+    const proof = { hostname: "example.com", proof: "signed-proof", expiresAt: "2030-01-01T00:00:00.000Z" };
+    expect(saveOwnershipProof(storage, proof)).toBe(true);
+    expect(readOwnershipProof(storage, proof.hostname)).toEqual(proof);
   });
 
   it("stocke uniquement une preuve valide et ignore les preuves expirées", () => {

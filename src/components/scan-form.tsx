@@ -10,6 +10,7 @@ import {
 } from "@/lib/report";
 import { DomainVerification } from "./domain-verification";
 import {
+  browserStorage,
   createBrowserIdentity,
   readOwnershipProof,
 } from "@/lib/browser-domain-identity";
@@ -32,10 +33,10 @@ async function storedOwnership(
       ? input.trim()
       : `https://${input.trim()}`;
     const hostname = new URL(candidate).hostname;
-    const proof = readOwnershipProof(window.localStorage, hostname);
+    const proof = readOwnershipProof(browserStorage(), hostname);
     if (!proof) return undefined;
     const identity = await createBrowserIdentity(
-      window.localStorage,
+      browserStorage(),
       window.crypto,
     );
     return { proof: proof.proof, clientSecret: identity.secret };
