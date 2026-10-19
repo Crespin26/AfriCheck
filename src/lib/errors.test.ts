@@ -5,6 +5,10 @@ describe("toPublicError", () => {
   it("préserve uniquement les erreurs métier typées", () => {
     expect(toPublicError(new ScanError("TARGET_BLOCKED", "détail interne à ne pas exposer"))).toEqual({ code: "TARGET_BLOCKED", message: "Cette adresse réseau n’est pas autorisée.", status: 422 });
   });
+  it("expose une erreur TLS stable sans détails du certificat", () => {
+    expect(toPublicError(new ScanError("TLS_INVALID", "détails privés du certificat")))
+      .toEqual({ code: "TLS_INVALID", message: "La vérification exige un certificat TLS valide pour ce domaine.", status: 422 });
+  });
   it("reconnaît une erreur sérialisée issue d’un autre contexte", () => {
     expect(toPublicError({ name: "ScanError", code: "REQUEST_TIMEOUT", message: "détail provenant d’un worker", httpStatus: 504 })).toEqual({ code: "REQUEST_TIMEOUT", message: "Le site met trop de temps à répondre.", status: 504 });
   });

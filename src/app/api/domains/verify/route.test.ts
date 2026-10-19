@@ -18,12 +18,12 @@ describe("POST /api/domains/verify", () => {
     const secret = "s".repeat(43);
     const subject = createHash("sha256").update(secret).digest("base64url");
     const created = createDomainChallenge("example.com", subject, Buffer.from("k".repeat(32)));
-    fetchWebsite.mockResolvedValue({ status: 200, headers: new Headers(), cookies: [], body: created.challenge, finalUrl: new URL(created.verificationUrl) });
+    fetchWebsite.mockResolvedValue({ status: 200, headers: new Headers(), cookies: [], tls: { authorized: true }, body: created.challenge, finalUrl: new URL(created.verificationUrl) });
     const { POST } = await import("./route");
     const response = await POST(new Request("https://app.test/api/domains/verify", { method: "POST", body: JSON.stringify({ challenge: created.challenge, clientSecret: secret }) }));
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toMatchObject({ hostname: "example.com" });
-    expect(fetchWebsite).toHaveBeenCalledWith(new URL(created.verificationUrl), { maxBodyBytes: 4096, timeoutMs: 8000, maxRedirects: 2 });
+    expect(fetchWebsite).toHaveBeenCalledWith(new URL(created.verificationUrl), { maxBodyBytes: 4096, timeoutMs: 8000, maxRedirects: 0, requireValidTls: true });
   });
 
   it("ne divulgue pas le contenu attendu en cas de fichier incorrect", async () => {
@@ -31,7 +31,7 @@ describe("POST /api/domains/verify", () => {
     const secret = "s".repeat(43);
     const subject = createHash("sha256").update(secret).digest("base64url");
     const created = createDomainChallenge("example.com", subject, Buffer.from("k".repeat(32)));
-    fetchWebsite.mockResolvedValue({ status: 200, headers: new Headers(), cookies: [], body: "autre contenu", finalUrl: new URL(created.verificationUrl) });
+    fetchWebsite.mockResolvedValue({ status: 200, headers: new Headers(), cookies: [], tls: { authorized: true }, body: "autre contenu", finalUrl: new URL(created.verificationUrl) });
     const { POST } = await import("./route");
     const response = await POST(new Request("https://app.test/api/domains/verify", { method: "POST", body: JSON.stringify({ challenge: created.challenge, clientSecret: secret }) }));
     expect(response.status).toBe(422);

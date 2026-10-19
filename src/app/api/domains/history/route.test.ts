@@ -17,7 +17,7 @@ async function ownership() {
   const secret = "s".repeat(43);
   const subject = createHash("sha256").update(secret).digest("base64url");
   const challenge = createDomainChallenge("example.com", subject, Buffer.from("k".repeat(32)));
-  const result = await verifyDomainChallenge({ challenge: challenge.challenge, clientSecret: secret }, Buffer.from("k".repeat(32)), Date.now(), async (url) => ({ status: 200, headers: new Headers(), cookies: [], body: challenge.challenge, finalUrl: url }));
+  const result = await verifyDomainChallenge({ challenge: challenge.challenge, clientSecret: secret }, Buffer.from("k".repeat(32)), Date.now(), async (url) => ({ status: 200, headers: new Headers(), cookies: [], tls: { authorized: true }, body: challenge.challenge, finalUrl: url }));
   return { proof: result.proof, clientSecret: secret };
 }
 

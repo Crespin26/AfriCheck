@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { normalizeUrl } from "./url-safety";
-import { fetchWebsite, type ScanResponse } from "./transport";
+import { fetchWebsite, type ScanResponse, type TransportOptions } from "./transport";
 
 const CHALLENGE_LIFETIME_MS = 15 * 60 * 1000;
 const PROOF_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -12,7 +12,7 @@ const BASE64URL_32_BYTES = /^[A-Za-z0-9_-]{43}$/;
 export type DomainVerificationCode =
   | "VERIFICATION_DISABLED" | "INVALID_SUBJECT" | "INVALID_CLIENT_SECRET"
   | "INVALID_CHALLENGE" | "CHALLENGE_EXPIRED" | "PROOF_EXPIRED" | "SUBJECT_MISMATCH"
-  | "DOMAIN_MISMATCH" | "VERIFICATION_FILE_MISSING" | "VERIFICATION_FILE_MISMATCH";
+  | "DOMAIN_MISMATCH" | "VERIFICATION_HTTPS_REQUIRED" | "VERIFICATION_FILE_MISSING" | "VERIFICATION_FILE_MISMATCH";
 
 const publicMessages: Record<DomainVerificationCode, { message: string; status: number }> = {
   VERIFICATION_DISABLED: { message: "La vérification de domaine n’est pas configurée.", status: 503 },
@@ -23,6 +23,7 @@ const publicMessages: Record<DomainVerificationCode, { message: string; status: 
   PROOF_EXPIRED: { message: "La preuve de contrôle du domaine a expiré.", status: 410 },
   SUBJECT_MISMATCH: { message: "Ce challenge appartient à un autre navigateur.", status: 403 },
   DOMAIN_MISMATCH: { message: "La preuve ne correspond pas au domaine demandé.", status: 403 },
+  VERIFICATION_HTTPS_REQUIRED: { message: "La vérification exige HTTPS et un certificat TLS valide.", status: 422 },
   VERIFICATION_FILE_MISSING: { message: "Le fichier de vérification est introuvable sur ce domaine.", status: 422 },
   VERIFICATION_FILE_MISMATCH: { message: "Le contenu du fichier de vérification ne correspond pas au challenge.", status: 422 },
 };
@@ -50,7 +51,7 @@ type SignedPayload = {
 
 export type DomainChallenge = { challenge: string; verificationUrl: string; hostname: string; expiresAt: string };
 export type OwnershipProof = { proof: string; hostname: string; expiresAt: string };
-export type WebsiteFetcher = (url: URL, options: { maxBodyBytes: number; timeoutMs: number; maxRedirects: number }) => Promise<ScanResponse>;
+export type WebsiteFetcher = (url: URL, options: TransportOptions) => Promise<ScanResponse>;
 
 export function domainVerificationKey(value = process.env.DOMAIN_VERIFICATION_KEY): Buffer {
   if (!value || Buffer.byteLength(value, "utf8") < 32) throw new DomainVerificationError("VERIFICATION_DISABLED");
@@ -107,6 +108,7 @@ export function createDomainChallenge(input: string, subject: string, key: Buffe
   validateSubject(subject);
   if (!BASE64URL_32_BYTES.test(nonce)) throw new DomainVerificationError("INVALID_CHALLENGE");
   const url = normalizeUrl(input);
+  url.protocol = "https:";
   const origin = url.origin;
   const payload: SignedPayload = { v: 1, kind: "challenge", origin, host: url.hostname, subject, nonce, iat: now, exp: now + CHALLENGE_LIFETIME_MS };
   return { challenge: signPayload(payload, key), verificationUrl: new URL(WELL_KNOWN_PATH, origin).href, hostname: url.hostname, expiresAt: new Date(payload.exp).toISOString() };
@@ -116,7 +118,11 @@ export async function verifyDomainChallenge(input: { challenge: string; clientSe
   const payload = parseToken(input.challenge, "challenge", key, now);
   const subject = hashClientSecret(input.clientSecret);
   if (!safeEqual(subject, payload.subject)) throw new DomainVerificationError("SUBJECT_MISMATCH");
-  const response = await fetcher(new URL(WELL_KNOWN_PATH, payload.origin), { maxBodyBytes: 4096, timeoutMs: 8000, maxRedirects: 2 });
+  const verificationUrl = new URL(WELL_KNOWN_PATH, payload.origin);
+  if (verificationUrl.protocol !== "https:") throw new DomainVerificationError("VERIFICATION_HTTPS_REQUIRED");
+  const response = await fetcher(verificationUrl, { maxBodyBytes: 4096, timeoutMs: 8000, maxRedirects: 0, requireValidTls: true });
+  if (response.finalUrl.href !== verificationUrl.href) throw new DomainVerificationError("DOMAIN_MISMATCH");
+  if (!response.tls?.authorized) throw new DomainVerificationError("VERIFICATION_HTTPS_REQUIRED");
   if (response.status !== 200) throw new DomainVerificationError("VERIFICATION_FILE_MISSING");
   if (!safeEqual(response.body.trim(), input.challenge)) throw new DomainVerificationError("VERIFICATION_FILE_MISMATCH");
   const proofPayload: SignedPayload = { ...payload, kind: "ownership", nonce: randomBytes(32).toString("base64url"), iat: now, exp: now + PROOF_LIFETIME_MS };

@@ -347,8 +347,8 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
               <div>
                 <strong>Lancez la vérification</strong>
                 <p>
-                  Le fichier est lu avec les mêmes protections anti-SSRF que le
-                  scanner.
+                  Le fichier doit être accessible en HTTPS, avec un certificat
+                  valide et sans redirection.
                 </p>
               </div>
             </li>

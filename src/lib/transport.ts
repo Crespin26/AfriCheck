@@ -18,6 +18,7 @@ export type TransportOptions = {
   maxBodyBytes?: number;
   timeoutMs?: number;
   maxRedirects?: number;
+  requireValidTls?: boolean;
 };
 
 type RequiredTransportOptions = Required<TransportOptions>;
@@ -28,6 +29,7 @@ function optionsWithDefaults(options: TransportOptions): RequiredTransportOption
     maxBodyBytes: options.maxBodyBytes ?? MAX_BODY_BYTES,
     timeoutMs: options.timeoutMs ?? TIMEOUT_MS,
     maxRedirects: options.maxRedirects ?? MAX_REDIRECTS,
+    requireValidTls: options.requireValidTls ?? false,
   };
 }
 
@@ -79,7 +81,7 @@ async function requestOnce(url: URL, options: RequiredTransportOptions): Promise
     const request = client.request(url, {
       method: "GET",
       headers: { "user-agent": "AfriCheck/0.2 (+https://africheck.app)", accept: "text/html,application/xhtml+xml", "accept-encoding": "identity" },
-      rejectUnauthorized: false,
+      rejectUnauthorized: options.requireValidTls,
       lookup: (_hostname, lookupOptions, callback) => {
         if (lookupOptions.all) callback(null, [pinned]);
         else callback(null, pinned.address, pinned.family);
@@ -105,13 +107,20 @@ async function requestOnce(url: URL, options: RequiredTransportOptions): Promise
       } catch (error) { finish(reject, error); }
     });
     const deadline = setTimeout(() => request.destroy(new ScanError("REQUEST_TIMEOUT", "Le site met trop de temps à répondre.", 504)), remainingMs);
-    request.on("error", (error) => finish(reject, error));
+    request.on("error", (error: NodeJS.ErrnoException) => {
+      if (options.requireValidTls && /^(?:CERT_|ERR_TLS_CERT_|DEPTH_ZERO_SELF_SIGNED_CERT$|SELF_SIGNED_CERT_IN_CHAIN$|UNABLE_TO_(?:VERIFY|GET_ISSUER))/.test(error.code ?? "")) {
+        finish(reject, new ScanError("TLS_INVALID", "Le certificat TLS n’est pas valide."));
+      } else finish(reject, error);
+    });
     request.end();
   });
 }
 
 export async function fetchWebsite(initial: URL, overrides: TransportOptions = {}): Promise<ScanResponse> {
   const options = optionsWithDefaults(overrides);
+  if (options.requireValidTls && initial.protocol !== "https:") {
+    throw new ScanError("UNSUPPORTED_PROTOCOL", "Une connexion HTTPS est requise.");
+  }
   const started = Date.now();
   let current = initial;
   for (let count = 0; count <= options.maxRedirects; count += 1) {
@@ -125,7 +134,8 @@ export async function fetchWebsite(initial: URL, overrides: TransportOptions = {
     try { next = new URL(location, current); }
     catch { throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée."); }
     if (
-      !["http:", "https:"].includes(next.protocol)
+      (options.requireValidTls && next.protocol !== "https:")
+      || !["http:", "https:"].includes(next.protocol)
       || next.username
       || next.password
       || next.port !== current.port

@@ -1,7 +1,7 @@
 export type ErrorCode =
   | "INVALID_URL" | "UNSUPPORTED_PROTOCOL" | "TARGET_BLOCKED"
   | "DNS_TIMEOUT" | "REQUEST_TIMEOUT" | "RESPONSE_TOO_LARGE"
-  | "UNSUPPORTED_ENCODING" | "INVALID_REDIRECT" | "TOO_MANY_REDIRECTS"
+  | "TLS_INVALID" | "UNSUPPORTED_ENCODING" | "INVALID_REDIRECT" | "TOO_MANY_REDIRECTS"
   | "UPSTREAM_HTTP_ERROR" | "UPSTREAM_UNREACHABLE" | "INTERNAL_ERROR";
 
 export class ScanError extends Error {
@@ -20,6 +20,7 @@ const publicErrors: Record<ErrorCode, Omit<PublicError, "code">> = {
   DNS_TIMEOUT: { message: "La résolution DNS met trop de temps à répondre.", status: 504 },
   REQUEST_TIMEOUT: { message: "Le site met trop de temps à répondre.", status: 504 },
   RESPONSE_TOO_LARGE: { message: "La page est trop volumineuse pour ce diagnostic.", status: 502 },
+  TLS_INVALID: { message: "La vérification exige un certificat TLS valide pour ce domaine.", status: 422 },
   UNSUPPORTED_ENCODING: { message: "L’encodage de cette réponse n’est pas pris en charge.", status: 502 },
   INVALID_REDIRECT: { message: "Une redirection non autorisée a été détectée.", status: 422 },
   TOO_MANY_REDIRECTS: { message: "Le site effectue trop de redirections.", status: 502 },
@@ -30,7 +31,7 @@ const publicErrors: Record<ErrorCode, Omit<PublicError, "code">> = {
 
 const errorCodes = new Set<ErrorCode>([
   "INVALID_URL", "UNSUPPORTED_PROTOCOL", "TARGET_BLOCKED", "DNS_TIMEOUT", "REQUEST_TIMEOUT",
-  "RESPONSE_TOO_LARGE", "UNSUPPORTED_ENCODING", "INVALID_REDIRECT", "TOO_MANY_REDIRECTS",
+  "TLS_INVALID", "RESPONSE_TOO_LARGE", "UNSUPPORTED_ENCODING", "INVALID_REDIRECT", "TOO_MANY_REDIRECTS",
   "UPSTREAM_HTTP_ERROR", "UPSTREAM_UNREACHABLE", "INTERNAL_ERROR",
 ]);
 

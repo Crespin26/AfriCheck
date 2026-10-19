@@ -1,4 +1,6 @@
 import http, { type Server } from "node:http";
+import https from "node:https";
+import { readFileSync } from "node:fs";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWebsite, type TransportOptions } from "./transport";
@@ -94,11 +96,53 @@ describe("fetchWebsite", () => {
     await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options())).rejects.toMatchObject({ code: "UNSUPPORTED_ENCODING" });
   });
 
+  it("ne suit aucune redirection lorsque leur limite vaut zéro", async () => {
+    const received: string[] = [];
+    server.on("request", (request, response) => {
+      received.push(request.url ?? "");
+      response.writeHead(302, { location: "/other" });
+      response.end();
+    });
+    await expect(fetchWebsite(new URL(`http://public.example:${port}/proof`), options({ maxRedirects: 0 })))
+      .rejects.toMatchObject({ code: "TOO_MANY_REDIRECTS" });
+    expect(received).toEqual(["/proof"]);
+  });
+
   it("limite le nombre de redirections", async () => {
     server.on("request", (request, response) => {
       const count = Number(request.url?.slice(1) || 0);
       response.writeHead(302, { location: `/${count + 1}` }); response.end();
     });
     await expect(fetchWebsite(new URL(`http://public.example:${port}/0`), options({ maxRedirects: 2 }))).rejects.toThrow("trop de redirections");
+  });
+});
+
+// Deliberately untrusted, public test certificate; never used by the application.
+describe("TLS de vérification", () => {
+  it("rejette un certificat auto-signé en mode strict mais permet son diagnostic", async () => {
+    const tlsServer = https.createServer({
+      key: readFileSync(new URL("../../test/fixtures/untrusted-key.pem", import.meta.url)),
+      cert: readFileSync(new URL("../../test/fixtures/untrusted-cert.pem", import.meta.url)),
+    }, (_request, response) => response.end("challenge"));
+    await new Promise<void>((resolve) => tlsServer.listen(0, "127.0.0.1", resolve));
+    const tlsPort = (tlsServer.address() as AddressInfo).port;
+    const url = new URL(`https://public.example:${tlsPort}/`);
+    try {
+      await expect(fetchWebsite(url, options({ requireValidTls: true })))
+        .rejects.toMatchObject({ code: "TLS_INVALID" });
+      const diagnostic = await fetchWebsite(url, options());
+      expect(diagnostic.body).toBe("challenge");
+      expect(diagnostic.tls?.authorized).toBe(false);
+    } finally {
+      tlsServer.closeAllConnections();
+      await new Promise<void>((resolve, reject) => tlsServer.close((error) => error ? reject(error) : resolve()));
+    }
+  });
+
+  it("refuse HTTP avant la connexion en mode strict", async () => {
+    const resolveAddress = vi.fn(async () => ({ address: "127.0.0.1", family: 4 }));
+    await expect(fetchWebsite(new URL(`http://public.example:${port}/`), options({ requireValidTls: true, resolveAddress })))
+      .rejects.toMatchObject({ code: "UNSUPPORTED_PROTOCOL" });
+    expect(resolveAddress).not.toHaveBeenCalled();
   });
 });

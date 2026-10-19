@@ -10,7 +10,7 @@ const now = Date.UTC(2026, 7, 27, 12);
 const nonce = "n".repeat(43);
 
 function response(body: string, status = 200): ScanResponse {
-  return { status, headers: new Headers(), cookies: [], body, finalUrl: new URL("https://example.com/.well-known/africheck-verification.txt") };
+  return { status, headers: new Headers(), cookies: [], body, tls: { authorized: true }, finalUrl: new URL("https://example.com/.well-known/africheck-verification.txt") };
 }
 
 describe("vérification de domaine", () => {
@@ -18,6 +18,29 @@ describe("vérification de domaine", () => {
     const result = createDomainChallenge("https://example.com/contact", subject, key, now, nonce);
     expect(result).toMatchObject({ hostname: "example.com", verificationUrl: "https://example.com/.well-known/africheck-verification.txt", expiresAt: "2026-08-27T12:15:00.000Z" });
     expect(result.challenge.split(".")).toHaveLength(2);
+  });
+
+  it("publie toujours le challenge sur HTTPS même pour une URL HTTP", () => {
+    const created = createDomainChallenge("http://example.com/contact", subject, key, now, nonce);
+    expect(created.verificationUrl).toBe("https://example.com/.well-known/africheck-verification.txt");
+  });
+
+  it.each([
+    "https://other.example/.well-known/africheck-verification.txt",
+    "http://example.com/.well-known/africheck-verification.txt",
+    "https://example.com/another-file.txt",
+  ])("refuse un fichier servi ailleurs : %s", async (finalUrl) => {
+    const created = createDomainChallenge("example.com", subject, key, now, nonce);
+    await expect(verifyDomainChallenge({ challenge: created.challenge, clientSecret: secret }, key, now,
+      async () => ({ ...response(created.challenge), finalUrl: new URL(finalUrl) })))
+      .rejects.toMatchObject({ code: "DOMAIN_MISMATCH" });
+  });
+
+  it.each([undefined, { authorized: false }])("refuse une réponse sans TLS validé : %j", async (tls) => {
+    const created = createDomainChallenge("example.com", subject, key, now, nonce);
+    await expect(verifyDomainChallenge({ challenge: created.challenge, clientSecret: secret }, key, now,
+      async () => ({ ...response(created.challenge), tls })))
+      .rejects.toMatchObject({ code: "VERIFICATION_HTTPS_REQUIRED" });
   });
 
   it("rejette un challenge altéré", async () => {
@@ -49,7 +72,7 @@ describe("vérification de domaine", () => {
     let requestedUrl = "";
     const result = await verifyDomainChallenge({ challenge: created.challenge, clientSecret: secret }, key, now, async (url, options) => {
       requestedUrl = url.href;
-      expect(options).toEqual({ maxBodyBytes: 4096, timeoutMs: 8000, maxRedirects: 2 });
+      expect(options).toEqual({ maxBodyBytes: 4096, timeoutMs: 8000, maxRedirects: 0, requireValidTls: true });
       return response(`\n${created.challenge}\n`);
     });
     expect(requestedUrl).toBe("https://example.com/.well-known/africheck-verification.txt");
