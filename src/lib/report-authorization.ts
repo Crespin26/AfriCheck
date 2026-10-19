@@ -20,6 +20,7 @@ export function reportSigningKey(value = process.env.REPORT_SIGNING_KEY): Buffer
 
 function signature(input: ReportInput, expiresAt: number, key: Buffer): Buffer {
   const report: ReportInput = {
+    ...(input.scoringVersion === 2 ? { scoringVersion: 2 as const } : {}),
     finalUrl: new URL(input.finalUrl).href,
     scannedAt: input.scannedAt,
     durationMs: input.durationMs,

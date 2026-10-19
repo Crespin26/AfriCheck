@@ -1,4 +1,5 @@
 import "server-only";
+import { inspectHtml, type HtmlInspection } from "./html-inspection";
 import type { Finding } from "./types";
 
 type Exposure = { source: string; value: string; versioned: boolean };
@@ -21,36 +22,25 @@ function safeValue(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
-function generatorValue(html: string): string | undefined {
-  const tags = html.match(/<meta\b[^>]{0,1000}>/gi) ?? [];
-  for (const tag of tags.slice(0, 100)) {
-    const name = tag.match(/\bname\s*=\s*["']?([^\s"'>]+)/i)?.[1]?.toLowerCase();
-    if (name !== "generator") continue;
-    const content = tag.match(/\bcontent\s*=\s*(?:["']([^"']*)["']|([^\s>]+))/i);
-    const value = safeValue(content?.[1] ?? content?.[2] ?? "");
-    if (value) return value;
-  }
-  return undefined;
-}
-
-export function detectTechnologyExposure(headers: Headers, html: string): Exposure[] {
+export function detectTechnologyExposure(headers: Headers, html: string | undefined, inspection?: HtmlInspection): Exposure[] {
   const exposures: Exposure[] = [];
   for (const [header, source] of HEADER_SIGNALS) {
     const value = safeValue(headers.get(header) ?? "");
     if (value) exposures.push({ source, value, versioned: VERSION_PATTERN.test(value) });
   }
-  const generator = generatorValue(html);
+  const signals = inspection ?? (html === undefined ? undefined : inspectHtml(html, new URL("https://analysis.invalid/")));
+  const generator = signals?.generator ? safeValue(signals.generator) : undefined;
   if (generator) exposures.push({ source: "Générateur HTML", value: generator, versioned: VERSION_PATTERN.test(generator) });
   for (const [pattern, technology] of HTML_SIGNATURES) {
-    if (pattern.test(html) && !exposures.some((item) => item.value.toLowerCase().includes(technology.toLowerCase()))) {
+    if (pattern.test(signals?.resourceUrls.join(" ") ?? "") && !exposures.some((item) => item.value.toLowerCase().includes(technology.toLowerCase()))) {
       exposures.push({ source: "Empreinte HTML", value: technology, versioned: false });
     }
   }
   return exposures.slice(0, 5);
 }
 
-export function technologyExposureFinding(headers: Headers, html: string): Finding {
-  const exposures = detectTechnologyExposure(headers, html);
+export function technologyExposureFinding(headers: Headers, html: string | undefined, inspection?: HtmlInspection): Finding {
+  const exposures = detectTechnologyExposure(headers, html, inspection);
   const versioned = exposures.filter((item) => item.versioned);
   const details = exposures.map((item) => `${item.source} : ${item.value}`).join(" ; ").slice(0, 400);
   if (versioned.length > 0) return {
@@ -64,8 +54,8 @@ export function technologyExposureFinding(headers: Headers, html: string): Findi
     recommendation: "Réduisez les en-têtes et métadonnées techniques non nécessaires afin de limiter les informations offertes à un attaquant.",
   };
   return {
-    id: "technology-exposure", title: "Technologies exposées", status: "pass", points: 5, maxPoints: 5,
-    observation: "Aucun en-tête ni générateur HTML révélant clairement une technologie n’a été observé.",
+    id: "technology-exposure", title: "Technologies exposées", status: html === undefined ? "unavailable" : "not_observed", points: 0, maxPoints: 5,
+    observation: html === undefined ? "Aucune empreinte dans les en-têtes ; le contenu ne permet pas d’inspecter un document HTML." : "Aucune empreinte technologique détectée dans les en-têtes et éléments HTML inspectés. Cela ne prouve pas l’absence de technologies identifiables.",
     recommendation: "Conservez cette réduction d’information et inventoriez les composants côté exploitation.",
   };
 }

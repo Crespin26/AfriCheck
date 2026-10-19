@@ -28,6 +28,12 @@ describe("autorisation d’export PDF", () => {
     expect(verifyReportAuthorization({ ...input, ...change }, authorizeReport(input, key, now), key, now)).toBe(false);
   });
 
+  it("signe également la version de calcul pour empêcher son changement", () => {
+    const current = { ...input, scoringVersion: 2 as const };
+    const authorization = authorizeReport(current, key, now);
+    expect(verifyReportAuthorization(current, authorization, key, now)).toBe(true);
+    expect(verifyReportAuthorization(input, authorization, key, now)).toBe(false);
+  });
   it("refuse les signatures absentes, mal formées, expirées ou signées avec une autre clé", () => {
     const authorization = authorizeReport(input, key, now);
     for (const invalid of [undefined, null, {}, { ...authorization, signature: "x" },

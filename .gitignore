@@ -27,6 +27,7 @@
 *.pem
 !test/fixtures/untrusted-key.pem
 !test/fixtures/untrusted-cert.pem
+!test/fixtures/scanner/*.pem
 
 # debug
 npm-debug.log*

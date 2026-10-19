@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import { detectTechnologyExposure, technologyExposureFinding } from "./technology-exposure";
 
 describe("empreintes technologiques passives", () => {
-  it("récompense une réponse sans empreinte évidente", () => {
-    expect(technologyExposureFinding(new Headers(), "<html></html>")).toMatchObject({ status: "pass", points: 5, maxPoints: 5 });
+  it("ne récompense pas l’absence d’empreinte évidente", () => {
+    expect(technologyExposureFinding(new Headers(), "<html></html>")).toMatchObject({ status: "not_observed", points: 0, maxPoints: 5 });
   });
 
   it("signale les versions exposées sans affirmer une CVE", () => {

@@ -4,10 +4,10 @@ import type { QueryResultRow } from "pg";
 import { databasePool, historyRetentionDays } from "./database";
 import type { ScanResult } from "./types";
 
-export type ScanHistorySummary = { id: string; scannedAt: string; score: number; grade: ScanResult["grade"] };
+export type ScanHistorySummary = { id: string; scannedAt: string; score: number; grade: ScanResult["grade"]; scoringVersion?: 2 };
 export type HistoryQuery = <T extends QueryResultRow>(text: string, values?: unknown[]) => Promise<{ rows: T[] }>;
 
-type HistoryRow = QueryResultRow & { id: string; scanned_at: Date | string; score: number; grade: ScanResult["grade"] };
+type HistoryRow = QueryResultRow & { id: string; scanned_at: Date | string; score: number; grade: ScanResult["grade"]; scoring_version?: string | null };
 
 function defaultQuery<T extends QueryResultRow>(text: string, values?: unknown[]) {
   return databasePool().query<T>(text, values);
@@ -29,8 +29,8 @@ export async function saveScanHistory(hostname: string, result: ScanResult, quer
 export async function listScanHistory(hostname: string, limit = 20, query: HistoryQuery = defaultQuery): Promise<ScanHistorySummary[]> {
   const safeLimit = Math.min(50, Math.max(1, Math.trunc(limit)));
   const { rows } = await query<HistoryRow>(
-    "SELECT id, scanned_at, score, grade FROM scan_history WHERE hostname = $1 AND expires_at > now() ORDER BY scanned_at DESC LIMIT $2",
+    "SELECT id, scanned_at, score, grade, result->>'scoringVersion' AS scoring_version FROM scan_history WHERE hostname = $1 AND expires_at > now() ORDER BY scanned_at DESC LIMIT $2",
     [hostname, safeLimit],
   );
-  return rows.map((row) => ({ id: row.id, scannedAt: new Date(row.scanned_at).toISOString(), score: row.score, grade: row.grade }));
+  return rows.map((row) => ({ id: row.id, scannedAt: new Date(row.scanned_at).toISOString(), score: row.score, grade: row.grade, ...(row.scoring_version === "2" ? { scoringVersion: 2 as const } : {}) }));
 }

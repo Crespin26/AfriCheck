@@ -320,3 +320,14 @@
     max-height: none;
   }
 }
+
+.findings details[data-status="not_observed"] summary > span,
+.findings details[data-status="not_applicable"] summary > span,
+.findings details[data-status="unavailable"] summary > span { background: #68766e; }
+.findings summary em { max-width: 110px; text-align: right; }
+
+.counts span[data-status="not_observed"],
+.counts span[data-status="not_applicable"],
+.counts span[data-status="unavailable"] { color: #48574e; background: #eef2ef; }
+
+.summary > p.scope { color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.5; letter-spacing: normal; text-transform: none; }

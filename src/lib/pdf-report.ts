@@ -1,7 +1,7 @@
 import "server-only";
 import { PDFDocument, StandardFonts, rgb, type PDFFont, type PDFPage } from "pdf-lib";
 import type { Finding, ScanResult } from "./types";
-import { displayHostname, remediationPriorities } from "./report";
+import { displayHostname, remediationPriorities, isEvaluatedFinding, findingStatusLabels } from "./report";
 
 const A4 = { width: 595.28, height: 841.89 };
 const MARGIN = 48;
@@ -37,7 +37,7 @@ function drawLines(page: PDFPage, lines: string[], x: number, y: number, font: P
   return y;
 }
 
-export type ReportInput = Pick<ScanResult, "finalUrl" | "scannedAt" | "durationMs" | "score" | "grade" | "findings">;
+export type ReportInput = Pick<ScanResult, "finalUrl" | "scannedAt" | "durationMs" | "score" | "grade" | "findings" | "scoringVersion">;
 
 export function parseReportInput(value: unknown): ReportInput {
   if (!value || typeof value !== "object") throw new Error("Rapport invalide.");
@@ -50,8 +50,9 @@ export function parseReportInput(value: unknown): ReportInput {
   if (typeof input.score !== "number" || !Number.isInteger(input.score) || input.score < 0 || input.score > 100) throw new Error("Score du rapport invalide.");
   if (!["A", "B", "C", "D", "E"].includes(input.grade ?? "")) throw new Error("Note du rapport invalide.");
   if (!Array.isArray(input.findings) || input.findings.length < 1 || input.findings.length > 30) throw new Error("Constats du rapport invalides.");
+  if (input.scoringVersion !== undefined && input.scoringVersion !== 2) throw new Error("Version de notation invalide.");
   const findings = input.findings.map((item) => parseFinding(item));
-  return { finalUrl: parsedUrl.toString(), scannedAt: input.scannedAt, durationMs: input.durationMs, score: input.score, grade: input.grade!, findings };
+  return { finalUrl: parsedUrl.toString(), scannedAt: input.scannedAt, durationMs: input.durationMs, score: input.score, grade: input.grade!, findings, ...(input.scoringVersion === 2 ? { scoringVersion: 2 as const } : {}) };
 }
 
 function parseFinding(value: unknown): Finding {
@@ -59,8 +60,9 @@ function parseFinding(value: unknown): Finding {
   const item = value as Partial<Finding>;
   const strings = [item.id, item.title, item.observation, item.recommendation];
   if (strings.some((field) => typeof field !== "string" || field.length < 1 || field.length > 700)) throw new Error("Constat invalide.");
-  if (!["pass", "warning", "fail"].includes(item.status ?? "")) throw new Error("Statut de constat invalide.");
+  if (!["pass", "warning", "fail", "not_observed", "not_applicable", "unavailable"].includes(item.status ?? "")) throw new Error("Statut de constat invalide.");
   if (typeof item.points !== "number" || typeof item.maxPoints !== "number" || item.points < 0 || item.maxPoints < 1 || item.points > item.maxPoints || item.maxPoints > 100) throw new Error("Points de constat invalides.");
+  if (!["pass", "warning", "fail"].includes(item.status!) && item.points !== 0) throw new Error("Un contrôle non évalué ne rapporte pas de points.");
   return item as Finding;
 }
 
@@ -111,6 +113,9 @@ function drawCover(page: PDFPage, input: ReportInput, regular: PDFFont, bold: PD
   page.drawText(`Analyse du ${safeText(date)} UTC`, { x: MARGIN + 142, y: A4.height - 188, font: regular, size: 10, color: MUTED });
   page.drawText(`Duree : ${(input.durationMs / 1000).toFixed(1)} s  |  ${input.findings.length} controles`, { x: MARGIN + 142, y: A4.height - 209, font: regular, size: 10, color: MUTED });
   page.drawText("Diagnostic automatise non intrusif. Ce document ne remplace pas un audit ou un test d'intrusion professionnel.", { x: MARGIN, y: A4.height - 260, font: regular, size: 8.5, color: MUTED });
+  if (input.scoringVersion === 2) {
+    page.drawText(`Methode v2 : ${input.findings.filter(isEvaluatedFinding).length}/${input.findings.length} controles evalues. Non evalues exclus du score.`, { x: MARGIN, y: A4.height - 276, font: regular, size: 8, color: MUTED });
+  }
   return A4.height - 300;
 }
 
@@ -127,12 +132,12 @@ function drawHeading(page: PDFPage, label: string, y: number, bold: PDFFont): nu
 }
 
 function drawFinding(page: PDFPage, finding: Finding, y: number, observation: string[], recommendation: string[], regular: PDFFont, bold: PDFFont): number {
-  const color = finding.status === "fail" ? RED : finding.status === "warning" ? AMBER : GREEN;
-  const label = finding.status === "fail" ? "A CORRIGER" : finding.status === "warning" ? "A AMELIORER" : "REUSSI";
+  const color = finding.status === "fail" ? RED : finding.status === "warning" ? AMBER : finding.status === "pass" ? GREEN : MUTED;
+  const label = safeText(findingStatusLabels[finding.status].toUpperCase());
   page.drawRectangle({ x: MARGIN, y: y - 15, width: 74, height: 18, color });
   page.drawText(label, { x: MARGIN + 7, y: y - 9, font: bold, size: 7, color: rgb(1, 1, 1) });
   page.drawText(safeText(finding.title), { x: MARGIN + 86, y: y - 8, font: bold, size: 10, color: INK });
-  page.drawText(`${finding.points}/${finding.maxPoints}`, { x: A4.width - MARGIN - 28, y: y - 8, font: bold, size: 8, color: MUTED });
+  page.drawText(isEvaluatedFinding(finding) ? `${finding.points}/${finding.maxPoints}` : "--", { x: A4.width - MARGIN - 28, y: y - 8, font: bold, size: 8, color: MUTED });
   y -= 30;
   y = drawLines(page, observation, MARGIN + 7, y, regular, 9, MUTED, 12) - 4;
   y = drawLines(page, recommendation, MARGIN + 7, y, regular, 9, INK, 12) - 12;

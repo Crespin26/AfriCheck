@@ -80,6 +80,11 @@ describeWithDatabase("historique PostgreSQL", () => {
     expect(JSON.parse((await run()).stdout)).toMatchObject({ historyDeleted: 0, quotasDeleted: 0 });
   });
 
+  it("conserve la méthode v2 pour distinguer les nouveaux scores des anciens", async () => {
+    const id = await saveScanHistory(hostname, { ...result, scoringVersion: 2 });
+    expect((await listScanHistory(hostname)).find((item) => item.id === id)).toMatchObject({ scoringVersion: 2 });
+  });
+
   it("déclare l’instance prête lorsque le schéma répond", async () => {
     const response = await readinessRoute();
     expect(response.status).toBe(200);

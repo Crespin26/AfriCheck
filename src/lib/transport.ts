@@ -12,7 +12,9 @@ const TIMEOUT_MS = 12_000;
 const MAX_REDIRECTS = 5;
 const REDIRECTS = new Set([301, 302, 303, 307, 308]);
 
-export type ScanResponse = { status: number; headers: Headers; cookies: string[]; body: string; finalUrl: URL; tls?: TlsInfo; };
+export type RedirectHop = { url: URL; destination: URL; cookies: string[]; tls?: TlsInfo };
+
+export type ScanResponse = { status: number; headers: Headers; cookies: string[]; body: string; finalUrl: URL; tls?: TlsInfo; redirects?: RedirectHop[]; };
 export type TransportOptions = {
   resolveAddress?: (url: URL) => Promise<ResolvedAddress>;
   maxBodyBytes?: number;
@@ -123,13 +125,14 @@ export async function fetchWebsite(initial: URL, overrides: TransportOptions = {
   }
   const started = Date.now();
   let current = initial;
+  const redirects: RedirectHop[] = [];
   for (let count = 0; count <= options.maxRedirects; count += 1) {
     const remainingMs = options.timeoutMs - (Date.now() - started);
     if (remainingMs <= 0) throw new ScanError("REQUEST_TIMEOUT", "Le site met trop de temps à répondre.", 504);
     const response = await requestOnce(current, { ...options, timeoutMs: remainingMs });
-    if (!REDIRECTS.has(response.status)) return { ...response, finalUrl: current };
+    if (!REDIRECTS.has(response.status)) return { ...response, finalUrl: current, redirects };
     const location = response.headers.get("location");
-    if (!location) return { ...response, finalUrl: current };
+    if (!location) return { ...response, finalUrl: current, redirects };
     let next: URL;
     try { next = new URL(location, current); }
     catch { throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée."); }
@@ -140,6 +143,7 @@ export async function fetchWebsite(initial: URL, overrides: TransportOptions = {
       || next.password
       || next.port !== current.port
     ) throw new ScanError("INVALID_REDIRECT", "Redirection non autorisée détectée.");
+    redirects.push({ url: current, destination: next, cookies: response.cookies, tls: response.tls });
     current = next;
   }
   throw new ScanError("TOO_MANY_REDIRECTS", "Le site effectue trop de redirections.", 502);

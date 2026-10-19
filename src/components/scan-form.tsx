@@ -4,6 +4,8 @@ import { FormEvent, useState } from "react";
 import type { ScanResult, ReportAuthorization } from "@/lib/types";
 import {
   displayHostname,
+  isEvaluatedFinding,
+  findingStatusLabels,
   findingSummary,
   prioritizeFindings,
   remediationPriorities,
@@ -156,12 +158,20 @@ export function ScanForm() {
               {(result.durationMs / 1000).toFixed(1)} s
             </p>
             <h2>
-              {result.score >= 75
-                ? "Bonne base de sécurité"
+              {summary && summary.unavailable > 0
+                ? "Diagnostic partiel : des contrôles restent à vérifier"
+                : result.score >= 75
+                ? "Protections observées : bon niveau"
                 : result.score >= 50
                   ? "Des améliorations sont nécessaires"
                   : "Plusieurs protections sont à renforcer"}
             </h2>
+            <p className={styles.scope}>
+              {result.scoringVersion === 2 ? "Méthode v2 · " : ""}
+              {result.findings.filter(isEvaluatedFinding).length}/{result.findings.length} contrôles évalués.
+              Le score porte sur ces seuls contrôles et sur la navigation observée.
+              Les éléments non observés ne constituent pas des protections vérifiées.
+            </p>
             <div className={styles.counts} aria-label="Résumé des contrôles">
               <span data-status="fail">
                 <b>{summary?.fail}</b> à corriger
@@ -172,6 +182,9 @@ export function ScanForm() {
               <span data-status="pass">
                 <b>{summary?.pass}</b> réussi{summary?.pass === 1 ? "" : "s"}
               </span>
+              {summary && summary.not_observed > 0 && <span data-status="not_observed"><b>{summary.not_observed}</b> sans élément observé</span>}
+              {summary && summary.not_applicable > 0 && <span data-status="not_applicable"><b>{summary.not_applicable}</b> non applicable(s)</span>}
+              {summary && summary.unavailable > 0 && <span data-status="unavailable"><b>{summary.unavailable}</b> non vérifiable(s)</span>}
             </div>
             {priorities.length > 0 && (
               <div className={styles.priorities}>
@@ -196,12 +209,10 @@ export function ScanForm() {
                         ? "✓"
                         : finding.status === "fail"
                           ? "×"
-                          : "!"}
+                          : finding.status === "warning" ? "!" : "—"}
                     </span>
                     <b>{finding.title}</b>
-                    <em>
-                      {finding.points}/{finding.maxPoints}
-                    </em>
+                    <em>{isEvaluatedFinding(finding) ? `${finding.points}/${finding.maxPoints}` : findingStatusLabels[finding.status]}</em>
                   </summary>
                   <div>
                     <p>{finding.observation}</p>

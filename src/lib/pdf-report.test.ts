@@ -8,6 +8,12 @@ const input = { finalUrl: "https://example.com/private?token=secret", scannedAt:
 
 describe("parseReportInput", () => {
   it("accepte un rapport borné", () => expect(parseReportInput(input).findings).toHaveLength(11));
+  it("accepte les états non évalués sans leur attribuer de points", () => {
+    for (const status of ["not_observed", "not_applicable", "unavailable"] as const) {
+      expect(parseReportInput({ ...input, scoringVersion: 2, findings: [finding(1, status)] }).findings[0].status).toBe(status);
+      expect(() => parseReportInput({ ...input, findings: [{ ...finding(1, status), points: 1 }] })).toThrow();
+    }
+  });
   it("rejette les protocoles, scores et longueurs arbitraires", () => {
     expect(() => parseReportInput({ ...input, finalUrl: "file:///etc/passwd" })).toThrow();
     expect(() => parseReportInput({ ...input, score: 101 })).toThrow();
@@ -16,6 +22,11 @@ describe("parseReportInput", () => {
 });
 
 describe("generateReportPdf", () => {
+  it("exporte un diagnostic partiel sans étiqueter les contrôles neutres comme réussis", async () => {
+    const report = parseReportInput({ ...input, scoringVersion: 2, findings: [finding(1, "not_observed"), finding(2, "unavailable"), finding(3, "not_applicable")] });
+    const bytes = await generateReportPdf(report);
+    expect((await PDFDocument.load(bytes)).getPageCount()).toBeGreaterThan(0);
+  });
   it("produit un PDF paginé avec des métadonnées", async () => {
     const bytes = await generateReportPdf(parseReportInput(input));
     expect(Buffer.from(bytes).subarray(0, 4).toString()).toBe("%PDF");

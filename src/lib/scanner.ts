@@ -3,58 +3,22 @@ import type { Finding, ScanResult, TlsInfo } from "./types";
 import { fetchWebsite, type ScanResponse } from "./transport";
 import { normalizeUrl } from "./url-safety";
 import { ScanError } from "./errors";
+import { inspectHtml } from "./html-inspection";
+import { isEvaluatedFinding } from "./report";
 import { technologyExposureFinding } from "./technology-exposure";
 
 export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "grade"> {
-  const maximum = findings.reduce((sum, item) => sum + item.maxPoints, 0);
-  const earned = findings.reduce((sum, item) => sum + Math.min(item.maxPoints, Math.max(0, item.points)), 0);
-  const score = maximum > 0 ? Math.round((earned / maximum) * 100) : 0;
+  const evaluated = findings.filter(isEvaluatedFinding);
+  const maximum = evaluated.reduce((sum, item) => sum + item.maxPoints, 0);
+  const earned = evaluated.reduce((sum, item) => sum + Math.min(item.maxPoints, Math.max(0, item.points)), 0);
+  const rawScore = maximum > 0 ? Math.round((earned / maximum) * 100) : 0;
+  const criticalTransportFailure = findings.some((item) => ["https", "tls"].includes(item.id) && item.status === "fail");
+  const score = criticalTransportFailure ? Math.min(49, rawScore) : rawScore;
   const grade: ScanResult["grade"] = score >= 90 ? "A" : score >= 75 ? "B" : score >= 60 ? "C" : score >= 40 ? "D" : "E";
   return { score, grade };
 }
 
 function add(findings: Finding[], finding: Finding) { findings.push(finding); }
-
-function isHtmlContentType(header: string | null): boolean {
-  const mediaType = header?.split(";", 1)[0].trim().toLowerCase();
-  return mediaType === "text/html" || mediaType === "application/xhtml+xml";
-}
-
-function attributeValues(tag: string, attribute: string): string[] {
-  const expression = new RegExp(`\\s${attribute}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s>]+))`, "gi");
-  return [...tag.matchAll(expression)].map((match) => match[1] ?? match[2] ?? match[3] ?? "");
-}
-
-function countMixedContent(html: string, baseUrl: URL): number {
-  const isHttp = (target: string) => {
-    try { return new URL(target, baseUrl).protocol === "http:"; }
-    catch { return false; }
-  };
-  let count = 0;
-  const countAttribute = (tagPattern: RegExp, attribute: string) => {
-    for (const [tag] of html.matchAll(tagPattern)) count += attributeValues(tag, attribute).filter(isHttp).length;
-  };
-  countAttribute(/<(?:script|img|iframe|audio|video|source|track|embed|input)\b[^>]*>/gi, "src");
-  countAttribute(/<link\b[^>]*>/gi, "href");
-  countAttribute(/<object\b[^>]*>/gi, "data");
-  countAttribute(/<video\b[^>]*>/gi, "poster");
-  for (const [tag] of html.matchAll(/<(?:img|source)\b[^>]*>/gi)) {
-    for (const sourceSet of attributeValues(tag, "srcset")) count += [...sourceSet.matchAll(/(?:^|,)\s*(http:\/\/[^\s,]+)/gi)].length;
-  }
-  const cssFragments = [
-    ...[...html.matchAll(/<style\b[^>]*>([\s\S]*?)<\/style\s*>/gi)].map((match) => match[1]),
-    ...[...html.matchAll(/<[^>]+>/g)].flatMap(([tag]) => attributeValues(tag, "style")),
-  ];
-  for (const css of cssFragments) {
-    for (const match of css.matchAll(/url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]+))\s*\)/gi)) {
-      if (isHttp(match[1] ?? match[2] ?? match[3] ?? "")) count += 1;
-    }
-    for (const match of css.matchAll(/@import\s+(?:"([^"]*)"|'([^']*)')/gi)) {
-      if (isHttp(match[1] ?? match[2] ?? "")) count += 1;
-    }
-  }
-  return count;
-}
 
 function cookieIsProtected(cookie: string, https: boolean): boolean {
   if (!https) return false;
@@ -75,10 +39,15 @@ function cookieIsProtected(cookie: string, https: boolean): boolean {
 }
 
 function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
-  if (!https) return { id: "tls", title: "Certificat TLS", status: "fail", points: 0, maxPoints: 10, observation: "Aucun certificat TLS n’est utilisé.", recommendation: "Installez un certificat TLS reconnu et configurez son renouvellement automatique." };
-  const expiry = tls?.validTo ? new Date(tls.validTo) : undefined;
-  const days = expiry ? Math.ceil((expiry.getTime() - Date.now()) / 86_400_000) : undefined;
-  const valid = Boolean(tls?.authorized && days !== undefined && days > 0);
+  if (!https) return { id: "tls", title: "Certificat TLS", status: "not_applicable", points: 0, maxPoints: 10, observation: "La page HTTP ne présente pas de certificat TLS.", recommendation: "Passez la page à HTTPS pour protéger la connexion." };
+  const expiry = tls?.validTo ? Date.parse(tls.validTo) : NaN;
+  if (!tls || (tls.authorized && !Number.isFinite(expiry))) return {
+    id: "tls", title: "Certificat TLS", status: "unavailable", points: 0, maxPoints: 10,
+    observation: "Les informations du certificat ne permettent pas de vérifier sa validité et son expiration.", recommendation: "Contrôlez le certificat avec un outil TLS dédié.",
+  };
+  const days = Math.ceil((expiry - Date.now()) / 86_400_000);
+  const notBefore = tls.validFrom ? Date.parse(tls.validFrom) : undefined;
+  const valid = Boolean(tls.authorized && expiry > Date.now() && (notBefore === undefined || (Number.isFinite(notBefore) && notBefore <= Date.now())));
   const expiring = valid && days! <= 30;
   return {
     id: "tls", title: "Certificat TLS", status: valid ? (expiring ? "warning" : "pass") : "fail", points: valid ? (expiring ? 6 : 10) : 0, maxPoints: 10,
@@ -88,8 +57,9 @@ function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
 }
 
 function analyzeHsts(header: string, https: boolean): Finding {
+  const duplicateMaxAge = [...header.matchAll(/(?:^|;)\s*max-age\s*=/gi)].length > 1;
   const maxAgeMatch = header.match(/(?:^|;)\s*max-age\s*=\s*(\d+)\s*(?:;|$)/i);
-  const maxAge = maxAgeMatch ? Number(maxAgeMatch[1]) : undefined;
+  const maxAge = !duplicateMaxAge && maxAgeMatch ? Number(maxAgeMatch[1]) : undefined;
   const strong = https && maxAge !== undefined && maxAge >= 15_552_000;
   const partial = https && maxAge !== undefined && maxAge > 0;
   return {
@@ -156,8 +126,16 @@ function cspFrameProtection(header: string): boolean | undefined {
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
-  add(findings, { id: "https", title: "Connexion HTTPS", status: https ? "pass" : "fail", points: https ? 15 : 0, maxPoints: 15, observation: https ? "La page finale utilise une connexion chiffrée." : "La page finale est accessible sans chiffrement HTTPS.", recommendation: https ? "Aucune action prioritaire." : "Redirigez tout le trafic HTTP vers HTTPS." });
-  add(findings, analyzeTls(response.tls, https));
+  const downgraded = (response.redirects ?? []).some((hop) => hop.url.protocol === "https:" && hop.destination.protocol === "http:");
+  add(findings, { id: "https", title: "Connexion HTTPS", status: !https || downgraded ? "fail" : "pass", points: !https || downgraded ? 0 : 15, maxPoints: 15,
+    observation: downgraded ? "La navigation observée contient une redirection HTTPS vers HTTP." : !https ? "La page finale est accessible sans chiffrement HTTPS." : url.protocol === "http:" ? "La navigation commencée en HTTP aboutit à une page HTTPS." : "La page finale utilise HTTPS ; une entrée initiale en HTTP n’a pas été testée.",
+    recommendation: !https || downgraded ? "Imposez HTTPS et supprimez les redirections vers HTTP." : "Maintenez HTTPS sur toute la navigation et vérifiez aussi le point d’entrée HTTP." });
+  const tlsChecks = [
+    ...((response.redirects ?? []).filter((hop) => hop.url.protocol === "https:").map((hop) => analyzeTls(hop.tls, true))),
+    analyzeTls(response.tls, https),
+  ];
+  const tlsFinding = tlsChecks.find((item) => item.status === "fail") ?? tlsChecks.find((item) => item.status === "unavailable") ?? tlsChecks.find((item) => item.status === "warning") ?? tlsChecks.find((item) => item.status === "pass") ?? tlsChecks.at(-1)!;
+  add(findings, { ...tlsFinding, observation: tlsChecks.length > 1 ? `${tlsFinding.observation} Les connexions TLS des redirections observées sont incluses.` : tlsFinding.observation });
 
   const hsts = response.headers.get("strict-transport-security") ?? "";
   add(findings, analyzeHsts(hsts, https));
@@ -177,27 +155,64 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const frameProtected = cspFrameProtected ?? /^(deny|sameorigin)$/i.test(response.headers.get("x-frame-options") ?? "");
   add(findings, { id: "frame-protection", title: "Protection anti-clickjacking", status: frameProtected ? "pass" : "warning", points: frameProtected ? 5 : 0, maxPoints: 5, observation: frameProtected ? "Une directive anti-clickjacking valide a été observée." : "Aucune protection anti-clickjacking claire n’a été observée.", recommendation: frameProtected ? "Aucune action prioritaire." : "Ajoutez frame-ancestors dans la CSP ou X-Frame-Options." });
 
-  const cookieIssues = response.cookies.filter((cookie) => !cookieIsProtected(cookie, https));
-  add(findings, { id: "cookies", title: "Protection des cookies", status: cookieIssues.length ? "warning" : "pass", points: cookieIssues.length ? 3 : 10, maxPoints: 10, observation: response.cookies.length === 0 ? "Aucun cookie créé par la réponse initiale." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans transport ou attributs de protection complets.` : `${response.cookies.length} cookie(s) correctement protégé(s) observé(s).`, recommendation: cookieIssues.length ? "Utilisez HTTPS, Secure, HttpOnly, un SameSite adapté et respectez les contraintes des préfixes __Host- ou __Secure-." : "Contrôlez aussi les cookies créés après authentification." });
+  const cookies = [
+    ...response.cookies.map((cookie) => ({ cookie, https })),
+    ...(response.redirects ?? []).flatMap((hop) => hop.cookies.map((cookie) => ({ cookie, https: hop.url.protocol === "https:" }))),
+  ];
+  const activeCookies = cookies.filter(({ cookie }) => {
+    const attributes = cookie.split(";").slice(1).map((value) => value.trim());
+    const age = attributes.find((value) => /^max-age=/i.test(value))?.slice(8);
+    if (age !== undefined && /^-?\d+$/.test(age)) return Number(age) > 0;
+    const expiry = attributes.find((value) => /^expires=/i.test(value))?.slice(8);
+    return expiry === undefined || !Number.isFinite(Date.parse(expiry)) || Date.parse(expiry) > Date.now();
+  });
+  const cookieIssues = activeCookies.filter((item) => !cookieIsProtected(item.cookie, item.https));
+  add(findings, { id: "cookies", title: "Protection des cookies", status: !activeCookies.length ? "not_observed" : cookieIssues.length ? "warning" : "pass", points: !activeCookies.length ? 0 : cookieIssues.length ? 3 : 10, maxPoints: 10,
+    observation: !activeCookies.length ? cookies.length ? "Seules des instructions de suppression de cookies ont été reçues ; aucun cookie actif n’a été évalué." : "Aucun cookie reçu pendant la navigation observée. Les cookies créés par JavaScript ou après connexion ne sont pas vérifiés." : cookieIssues.length ? `${cookieIssues.length} cookie(s) sans transport ou attributs de protection complets, redirections comprises.` : `${activeCookies.length} cookie(s) avec les attributs de protection attendus dans les réponses observées.`,
+    recommendation: cookieIssues.length ? "Utilisez HTTPS, Secure, HttpOnly pour les cookies sensibles, et un SameSite adapté ; respectez les préfixes défensifs." : "Contrôlez aussi les cookies créés par JavaScript ou après authentification." });
 
-  const html = isHtmlContentType(response.headers.get("content-type")) ? response.body : "";
-  const forms = [...html.matchAll(/<form\b[^>]*>/gi)].map(([tag]) => tag);
-  const insecureForms = forms.filter((tag) => {
-    if (!https) return true;
-    const target = attributeValues(tag, "action")[0];
-    if (!target) return false;
-    try { return new URL(target, response.finalUrl).protocol !== "https:"; }
-    catch { return true; }
-  }).length;
+  const mediaType = response.headers.get("content-type")?.split(";", 1)[0].trim().toLowerCase();
+  const html = mediaType === "text/html" ? response.body : undefined;
+  const inspected = html === undefined ? undefined : inspectHtml(html, response.finalUrl);
+  const unavailableHtml = mediaType === "application/xhtml+xml" ? "Le document XHTML nécessite une analyse XML non prise en charge." : "Le type de contenu ne permet pas d’inspecter une page HTML.";
+  let insecureActions = 0;
+  let unknownActions = inspected?.formIncomplete ?? false;
+  for (const action of inspected?.formActions ?? []) {
+    const target = new URL(action);
+    if (!["http:", "https:"].includes(target.protocol)) unknownActions = true;
+    else if (!https || target.protocol === "http:") insecureActions += 1;
+  }
+  const formsStatus = !inspected ? "unavailable" : insecureActions ? "fail" : unknownActions ? "unavailable" : !inspected.hasForms ? "not_observed" : !inspected.formActions.length ? "not_applicable" : "pass";
   add(findings, {
-    id: "forms", title: "Formulaires chiffrés", status: insecureForms ? "fail" : "pass", points: insecureForms ? 0 : 10, maxPoints: 10,
-    observation: insecureForms ? `${insecureForms} formulaire(s) peuvent transmettre des données sans HTTPS.` : forms.length ? `${forms.length} formulaire(s) utilisent une destination HTTPS.` : "Aucun formulaire détecté dans le HTML initial.",
-    recommendation: insecureForms ? "Servez la page et la destination de chaque formulaire exclusivement via HTTPS." : "Vérifiez également les formulaires chargés dynamiquement.",
+    id: "forms", title: "Formulaires chiffrés", status: formsStatus, points: formsStatus === "pass" ? 10 : 0, maxPoints: 10,
+    observation: !inspected ? unavailableHtml : insecureActions ? `${insecureActions} destination(s) de formulaire peuvent transmettre des données sans protection HTTPS, y compris via un bouton de soumission.` : unknownActions ? "Certaines destinations de formulaire ne permettent pas une vérification HTTP(S) complète." : !inspected.hasForms ? "Aucun formulaire détecté dans le HTML initial ; aucun chiffrement de formulaire n’a été vérifié." : !inspected.formActions.length ? "Les formulaires observés ne soumettent pas de données sur le réseau (method=dialog)." : `${inspected.formActions.length} destination(s) de formulaire utilisent HTTPS depuis une page HTTPS.`,
+    recommendation: insecureActions ? "Servez la page et toutes les destinations de soumission exclusivement via HTTPS." : "Vérifiez également les formulaires chargés dynamiquement et les parcours authentifiés.",
   });
 
-  const mixed = https ? countMixedContent(html, response.finalUrl) : 0;
-  add(findings, { id: "mixed-content", title: "Contenu mixte", status: mixed ? "fail" : "pass", points: mixed ? 0 : 10, maxPoints: 10, observation: mixed ? `${mixed} ressource(s) HTTP référencée(s) depuis la page HTTPS.` : "Aucune ressource HTTP explicite détectée dans le HTML initial.", recommendation: mixed ? "Servez toutes les images, scripts et feuilles de style via HTTPS." : "Vérifiez aussi les ressources injectées dynamiquement." });
-  add(findings, technologyExposureFinding(response.headers, html));
+  let mixed = 0;
+  let webResources = 0;
+  let resourceIncomplete = inspected?.resourceIncomplete ?? false;
+  for (const source of inspected?.resourceUrls ?? []) {
+    try {
+      const target = new URL(source, inspected!.baseUrl);
+      if (["http:", "https:"].includes(target.protocol)) { webResources += 1; if (target.protocol === "http:") mixed += 1; }
+    } catch { resourceIncomplete = true; }
+  }
+  const mixedStatus = !https ? "not_applicable" : !inspected ? "unavailable" : mixed ? "fail" : resourceIncomplete ? "unavailable" : !webResources ? "not_observed" : "pass";
+  add(findings, { id: "mixed-content", title: "Contenu mixte", status: mixedStatus, points: mixedStatus === "pass" ? 10 : 0, maxPoints: 10,
+    observation: !https ? "La page utilise HTTP ; le contrôle de contenu mixte s’applique aux pages HTTPS." : !inspected ? unavailableHtml : mixed ? `${mixed} ressource(s) HTTP référencée(s) depuis la page HTTPS. Leur chargement effectif dépend du navigateur et de la CSP.` : resourceIncomplete ? "Certaines références de ressources ou règles CSS ne permettent pas une analyse complète." : !webResources ? "Aucune ressource HTTP(S) à évaluer dans le HTML et le CSS intégrés inspectés." : "Les références HTTP(S) inspectées utilisent HTTPS. Les ressources dynamiques et le contenu des fichiers externes ne sont pas vérifiés.",
+    recommendation: mixed ? "Remplacez les références HTTP par HTTPS, y compris dans la balise base, les srcset et les styles intégrés." : "Vérifiez également les ressources injectées par JavaScript et celles des feuilles de style externes." });
+  add(findings, technologyExposureFinding(response.headers, html, inspected));
+  if (!["text/html", "application/xhtml+xml"].includes(mediaType ?? "")) {
+    for (const item of findings) {
+      if (["content-security-policy", "frame-protection", "referrer-policy", "permissions-policy"].includes(item.id)) {
+        Object.assign(item, { status: "unavailable", points: 0,
+          observation: "Le contenu reçu n’est pas identifié comme un document HTML ou XHTML ; l’applicabilité de cette politique de page ne peut pas être vérifiée.",
+          recommendation: "Relancez le diagnostic sur une page HTML du site pour évaluer cette protection de page.",
+        });
+      }
+    }
+  }
   return findings;
 }
 
@@ -207,5 +222,5 @@ export async function scanWebsite(input: string): Promise<ScanResult> {
   const response = await fetchWebsite(url);
   if (response.status < 200 || response.status >= 400) throw new ScanError("UPSTREAM_HTTP_ERROR", `Le site a répondu avec le statut HTTP ${response.status}.`, 502);
   const findings = analyzeResponse(url, response);
-  return { url: url.toString(), finalUrl: response.finalUrl.toString(), scannedAt: new Date().toISOString(), durationMs: Date.now() - started, ...scoreFindings(findings), findings };
+  return { url: url.toString(), finalUrl: response.finalUrl.toString(), scannedAt: new Date().toISOString(), durationMs: Date.now() - started, ...scoreFindings(findings), findings, scoringVersion: 2 };
 }

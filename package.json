@@ -17,17 +17,22 @@
     "db:backup": "node scripts/backup.mjs",
     "db:restore": "node scripts/restore.mjs",
     "test:recovery": "node scripts/test-recovery.mjs",
-    "test:proxy": "node scripts/test-proxy.mjs"
+    "test:proxy": "node scripts/test-proxy.mjs",
+    "test:scanner": "vitest run src/lib/scanner.test.ts src/lib/scanner-regressions.test.ts src/lib/scanner.integration.test.ts src/lib/technology-exposure.test.ts"
   },
   "dependencies": {
+    "css-tree": "3.2.1",
     "next": "^16.4.1",
+    "parse5": "8.0.1",
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "srcset": "5.0.3"
   },
   "devDependencies": {
     "@playwright/test": "1.64.1",
+    "@types/css-tree": "3.2.0",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",

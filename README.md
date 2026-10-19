@@ -193,6 +193,37 @@ Hors Docker, utilisez `npm run db:cleanup` avec `DATABASE_URL` et `DATABASE_SSL`
 
 Le transport réapplique la validation réseau à chaque redirection, refuse qu’une redirection introduise des identifiants ou change de port, conserve l’adresse DNS validée pendant la connexion, limite à 2 Mo le corps analysé et impose un délai absolu de 12 secondes pour l’ensemble de la navigation, redirections comprises. Une instance n’exécute que quatre diagnostics réseau simultanés par défaut et refuse rapidement la surcharge avec `503` et `Retry-After`. Les réponses compressées inattendues sont refusées afin d’éviter l’analyse de données ambiguës ou une décompression excessive.
 
+## Méthode de diagnostic v2 et recette du scanner
+
+Les nouveaux résultats portent `scoringVersion: 2`. Les statuts distinguent :
+
+| Statut API | Signification | Effet sur le score |
+| --- | --- | --- |
+| `pass` | Protection ou propriété observée dans le périmètre inspecté | Points prévus par le contrôle |
+| `warning` | Configuration à examiner ou à améliorer | Points partiels ou nuls selon le contrôle |
+| `fail` | Défaut observé | Aucun point pour ce contrôle |
+| `not_observed` | Aucun élément à évaluer : par exemple aucun cookie actif ou formulaire | Exclu du calcul |
+| `not_applicable` | Contrôle sans objet : par exemple contenu mixte sur une page HTTP | Exclu du calcul |
+| `unavailable` | Informations insuffisantes ou contenu non pris en charge | Exclu du calcul, limite affichée |
+
+Le score est le pourcentage des points obtenus sur les seuls contrôles évalués (`pass`, `warning`, `fail`). Un échec HTTPS ou TLS le plafonne à **49/100**, afin qu’un certificat invalide ou une rétrogradation vers HTTP ne soit pas masqué par de bons en-têtes. L’absence d’un cookie, d’un formulaire ou d’une empreinte ne donne plus de points. Un score élevé ne couvre donc que les contrôles effectivement évalués : le nombre de contrôles évalués et les limites sont affichés dans l’interface et le PDF. Les scores historiques v1 sont conservés et identifiés ; ils ne sont pas directement comparables aux scores v2.
+
+L’analyse HTML utilise un arbre de document : les commentaires, chaînes JavaScript et modèles inactifs ne sont pas interprétés comme des balises. La première balise `base`, les entités HTML, les boutons de soumission associés à un formulaire, les candidats `srcset`, les ressources SVG et le CSS intégré sont pris en compte. Les liens de navigation et canoniques ne sont pas classés comme ressources chargées. Les références HTTP sont signalées comme telles, sans prétendre qu’un navigateur les a effectivement chargées ; une CSP peut les bloquer ou les mettre à niveau.
+
+Les cookies et certificats des redirections observées sont inclus. Les instructions de suppression ne sont pas considérées comme des cookies actifs. L’absence de `HttpOnly` reste un avertissement à interpréter selon la sensibilité du cookie et son besoin d’être lu en JavaScript. Une entrée en HTTPS n’entraîne pas de requête HTTP supplémentaire : le rapport précise que ce point d’entrée n’a pas été testé.
+
+Pour reproduire la recette locale :
+
+```bash
+npm run test:scanner
+```
+
+Elle fait tourner le scanner et son transport contre des serveurs HTTP/TLS locaux : certificat valide et réellement expiré, redirection HTTP→HTTPS, rétrogradation HTTPS→HTTP, cookies intermédiaires, boucles et redirection vers une cible privée. Seuls le DNS et les ports des noms réservés `public.example` et `other.public.example` sont raccordés aux serveurs de test ; les réponses et les échanges TLS sont réels. Aucun site tiers n’est contacté et aucun contournement des protections réseau n’est ajouté à l’API de production. Des tests de régression couvrent aussi les contenus non HTML, les formulaires absents, les styles et les faux éléments HTML.
+
+Les tests navigateur `npm run test:e2e` vérifient les nouveaux statuts, les exports et le diagnostic partiel sur ordinateur et mobile. Ils conservent un exemple de PDF et une capture dans `test-results/`, ignoré par Git.
+
+Références des parseurs : [parse5](https://parse5.js.org/), [CSSTree](https://github.com/csstree/csstree), [srcset](https://github.com/sindresorhus/srcset).
+
 ## Limites connues
 
-Le scanner inspecte la réponse HTTP et le HTML initial. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. Avant une mise en production publique à grande échelle, il faudra également renforcer l’isolation réseau des workers d’analyse.
+Le scanner inspecte la navigation HTTP observée et le HTML initial de la page finale. Les réponses JSON, les types inconnus et XHTML/XML ne permettent pas de valider les contrôles HTML. Pour un contenu non identifié comme document HTML/XHTML, les politiques de page (CSP, anti-clickjacking, référent et permissions) sont également signalées comme non vérifiables plutôt que comme des défauts confirmés. Le contenu des pages dans les iframes, des documents `srcdoc`, des modèles de shadow DOM déclaratif et des fichiers CSS externes n’est pas analysé. Les références CSS nécessitant une résolution de variables ou une syntaxe non interprétable sont signalées comme non vérifiables. Il ne rend pas encore le JavaScript de la page et ne vérifie pas les parcours authentifiés. Avant une mise en production publique à grande échelle, il faudra également renforcer l’isolation réseau des workers d’analyse.

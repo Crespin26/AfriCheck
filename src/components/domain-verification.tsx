@@ -21,6 +21,7 @@ type HistoryItem = {
   scannedAt: string;
   score: number;
   grade: string;
+  scoringVersion?: 2;
 };
 type Phase = "idle" | "creating" | "ready" | "verifying" | "verified";
 
@@ -273,6 +274,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
                 {history.length} diagnostic{history.length === 1 ? "" : "s"}
               </span>
             </div>
+            {history.some((item) => item.scoringVersion !== 2) && <p>Les scores v1 et v2 utilisent des calculs différents et ne sont pas directement comparables.</p>}
             {history.length === 0 ? (
               <p>
                 Aucun diagnostic enregistré. Relancez l’analyse pour commencer
@@ -291,7 +293,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
                       {item.score}
                       <small>/100</small>
                     </strong>
-                    <span>Note {item.grade}</span>
+                    <span>Note {item.grade} · v{item.scoringVersion ?? 1}</span>
                   </li>
                 ))}
               </ol>

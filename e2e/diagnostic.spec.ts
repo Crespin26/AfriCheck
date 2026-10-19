@@ -10,6 +10,7 @@ const diagnostic = {
   durationMs: 250,
   score: 75,
   grade: "B",
+  scoringVersion: 2,
   findings: [{
     id: "https", title: "Connexion HTTPS", status: "pass", points: 15,
     maxPoints: 15, observation: "La page utilise HTTPS.",
@@ -18,19 +19,27 @@ const diagnostic = {
     id: "hsts", title: "HSTS", status: "fail", points: 0,
     maxPoints: 5, observation: "HSTS absent.",
     recommendation: "Activez HSTS sur le serveur.",
+  }, {
+    id: "cookies", title: "Protection des cookies", status: "not_observed", points: 0,
+    maxPoints: 10, observation: "Aucun cookie reçu dans la navigation observée.", recommendation: "Vérifiez les parcours authentifiés.",
+  }, {
+    id: "forms", title: "Formulaires chiffrés", status: "not_observed", points: 0,
+    maxPoints: 10, observation: "Aucun formulaire détecté dans le HTML initial.", recommendation: "Vérifiez les formulaires dynamiques.",
   }],
 };
 
-function signedDiagnostic() {
+function signedDiagnostic(overrides: Partial<typeof diagnostic> = {}) {
+  const current = { ...diagnostic, ...overrides };
   const expiresAt = Date.now() + 3_600_000;
   const report = {
-    finalUrl: diagnostic.finalUrl, scannedAt: diagnostic.scannedAt,
-    durationMs: diagnostic.durationMs, score: diagnostic.score,
-    grade: diagnostic.grade, findings: diagnostic.findings,
+    scoringVersion: current.scoringVersion,
+    finalUrl: current.finalUrl, scannedAt: current.scannedAt,
+    durationMs: current.durationMs, score: current.score,
+    grade: current.grade, findings: current.findings,
   };
   const signature = createHmac("sha256", "playwright-report-signing-key-at-least-32")
     .update(JSON.stringify(["africheck-report-v1", expiresAt, report])).digest("base64url");
-  return { ...diagnostic, reportAuthorization: { expiresAt, signature } };
+  return { ...current, reportAuthorization: { expiresAt, signature } };
 }
 
 async function submit(page: Page) {
@@ -42,14 +51,18 @@ test("affiche le diagnostic, ses recommandations et télécharge un vrai PDF", a
   await page.route("**/api/scan", (route) => route.fulfill({ json: signedDiagnostic() }));
   await page.goto("/");
   await submit(page);
-  await expect(page.getByRole("heading", { name: "Bonne base de sécurité" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Protections observées : bon niveau" })).toBeVisible();
   await expect(page.getByText("Activez HSTS sur le serveur.").first()).toBeVisible();
+  await expect(page.getByText("2/4 contrôles évalués.", { exact: false })).toBeVisible();
+  await expect(page.locator('[data-status="not_observed"]').first()).toContainText("sans élément observé");
   await page.locator("summary").filter({ hasText: "Connexion HTTPS" }).click();
   await expect(page.getByText("La page utilise HTTPS.")).toBeVisible();
   const downloadEvent = page.waitForEvent("download");
   await page.getByRole("button", { name: "Télécharger le rapport PDF" }).click();
   const download = await downloadEvent;
   expect(download.suggestedFilename()).toBe("africheck-example.com-2026-10-19.pdf");
+  await download.saveAs(test.info().outputPath("diagnostic-v2.pdf"));
+  await page.screenshot({ path: test.info().outputPath("diagnostic-v2.png"), fullPage: true });
   const file = await download.path();
   expect(file).not.toBeNull();
   expect((await readFile(file!)).subarray(0, 5).toString()).toBe("%PDF-");
@@ -172,4 +185,35 @@ test("conserve la vérification réussie si le chargement de l’historique éch
   await expect(page.getByText("Domaine vérifié", { exact: true })).toBeVisible();
   await expect(page.getByText("L’historique n’est pas disponible sur cette instance.")).toBeVisible();
   await expect(page.getByRole("button", { name: "J’ai publié le fichier" })).toHaveCount(0);
+});
+
+
+test("présente les contrôles impossibles comme un diagnostic partiel", async ({ page }) => {
+  await page.route("**/api/scan", (route) => route.fulfill({ json: signedDiagnostic({
+    findings: diagnostic.findings.map((item) => item.id === "forms" ? { ...item, status: "unavailable", observation: "Contenu non HTML : contrôle impossible." } : item),
+  }) }));
+  await page.goto("/");
+  await submit(page);
+  await expect(page.getByRole("heading", { name: "Diagnostic partiel : des contrôles restent à vérifier" })).toBeVisible();
+  await expect(page.locator('details[data-status="unavailable"] summary')).toContainText("Non vérifiable");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  const download = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Télécharger le rapport PDF" }).click();
+  expect((await download).suggestedFilename()).toContain("africheck-example.com");
+});
+
+test("distingue les scores historiques v1 des nouveaux scores v2", async ({ page }) => {
+  await mockVerification(page);
+  await page.route("**/api/domains/history", (route) => route.fulfill({ json: { history: [
+    { id: "old", scannedAt: "2026-10-18T10:00:00Z", score: 82, grade: "B" },
+    { id: "new", scannedAt: "2026-10-19T10:00:00Z", score: 82, grade: "B", scoringVersion: 2 },
+  ] } }));
+  await page.goto("/");
+  await submit(page);
+  await page.getByRole("button", { name: "Vérifier ce domaine" }).click();
+  await page.getByRole("button", { name: "J’ai publié le fichier" }).click();
+  await expect(page.getByText("Note B · v1", { exact: true })).toBeVisible();
+  await expect(page.getByText("Note B · v2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Les scores v1 et v2 utilisent des calculs différents", { exact: false })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
 });

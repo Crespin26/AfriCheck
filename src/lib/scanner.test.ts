@@ -24,12 +24,12 @@ function response(overrides: Partial<ScanResponse> = {}): ScanResponse {
 
 describe("scoreFindings", () => {
   it("calcule le pourcentage et la note", () => {
-    const findings = [{ points: 9, maxPoints: 10 }, { points: 8, maxPoints: 10 }] as Finding[];
+    const findings = [{ status: "warning", points: 9, maxPoints: 10 }, { status: "warning", points: 8, maxPoints: 10 }] as Finding[];
     expect(scoreFindings(findings)).toEqual({ score: 85, grade: "B" });
   });
   it("borne les points et gère une liste vide", () => {
     expect(scoreFindings([])).toEqual({ score: 0, grade: "E" });
-    expect(scoreFindings([{ points: 20, maxPoints: 10 }] as Finding[]).score).toBe(100);
+    expect(scoreFindings([{ status: "pass", points: 20, maxPoints: 10 }] as Finding[]).score).toBe(100);
   });
 });
 
@@ -45,8 +45,8 @@ describe("analyzeResponse", () => {
     expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("fail");
     expect(findings.find((item) => item.id === "cookies")?.status).toBe("warning");
   });
-  it("analyse aussi les types HTML avec paramètres, casse différente ou XHTML", () => {
-    for (const contentType of ["Text/HTML; Charset=UTF-8", "application/xhtml+xml; charset=utf-8"]) {
+  it("analyse les types HTML avec paramètres et casse différente", () => {
+    for (const contentType of ["Text/HTML; Charset=UTF-8", "text/html; charset=utf-8"]) {
       const headers = response().headers;
       headers.set("content-type", contentType);
       const findings = analyzeResponse(new URL("https://example.com"), response({
@@ -64,7 +64,8 @@ describe("analyzeResponse", () => {
       headers,
       body: '{"markup":"<form action=\\"http://example.com/login\\">"}',
     }));
-    expect(findings.find((item) => item.id === "forms")?.status).toBe("pass");
+    expect(findings.find((item) => item.id === "forms")?.status).toBe("unavailable");
+    expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("unavailable");
   });
   it("refuse de valider des cookies reçus sur HTTP malgré leurs attributs", () => {
     const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), tls: undefined }));
@@ -89,8 +90,8 @@ describe("analyzeResponse", () => {
   });
   it("distingue les ressources mixtes des simples liens de navigation", () => {
     const safe = analyzeResponse(new URL("https://example.com"), response({ body: '<a href="http://example.net">Documentation</a>' }));
-    expect(safe.find((item) => item.id === "mixed-content")?.status).toBe("pass");
-    const unsafe = analyzeResponse(new URL("https://example.com"), response({ body: '<img src=http://cdn.example.com/a.png srcset="https://cdn.example.com/a.png 1x, http://cdn.example.com/a@2x.png 2x"><style>.hero{background:url(http://cdn.example.com/bg.png)}</style><link href="http://cdn.example.com/app.css">' }));
+    expect(safe.find((item) => item.id === "mixed-content")?.status).toBe("not_observed");
+    const unsafe = analyzeResponse(new URL("https://example.com"), response({ body: '<img src=http://cdn.example.com/a.png srcset="https://cdn.example.com/a.png 1x, http://cdn.example.com/a@2x.png 2x"><style>.hero{background:url(http://cdn.example.com/bg.png)}</style><link rel="stylesheet" href="http://cdn.example.com/app.css">' }));
     expect(unsafe.find((item) => item.id === "mixed-content")).toMatchObject({ status: "fail", points: 0 });
     expect(unsafe.find((item) => item.id === "mixed-content")?.observation).toContain("4 ressource(s)");
   });
@@ -104,9 +105,9 @@ describe("analyzeResponse", () => {
   it("considère tous les formulaires d’une page HTTP comme non chiffrés", () => {
     const headers = response().headers;
     headers.delete("strict-transport-security");
-    const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), headers, tls: undefined, body: '<form action="/connexion"><form>' }));
+    const findings = analyzeResponse(new URL("https://example.com"), response({ finalUrl: new URL("http://example.com"), headers, tls: undefined, body: '<form action="/connexion"></form><form></form>' }));
     expect(findings.find((item) => item.id === "forms")).toMatchObject({ status: "fail", points: 0 });
-    expect(findings.find((item) => item.id === "forms")?.observation).toContain("2 formulaire(s)");
+    expect(findings.find((item) => item.id === "forms")?.observation).toContain("2 destination(s)");
   });
   it("accepte une action relative sur HTTPS mais détecte une action HTTP non quotée", () => {
     const safe = analyzeResponse(new URL("https://example.com"), response({ body: '<form action="/connexion">' }));
@@ -114,13 +115,13 @@ describe("analyzeResponse", () => {
     const unsafe = analyzeResponse(new URL("https://example.com"), response({ body: "<form action=http://example.com/connexion>" }));
     expect(unsafe.find((item) => item.id === "forms")?.status).toBe("fail");
     const nonWeb = analyzeResponse(new URL("https://example.com"), response({ body: '<form action="mailto:contact@example.com">' }));
-    expect(nonWeb.find((item) => item.id === "forms")?.status).toBe("fail");
+    expect(nonWeb.find((item) => item.id === "forms")?.status).toBe("unavailable");
   });
   it("ignore les attributs data-* qui ne chargent ni ressource ni formulaire", () => {
     const findings = analyzeResponse(new URL("https://example.com"), response({
       body: '<img data-src="http://example.com/lazy.png"><form data-action="http://example.com/login">',
     }));
-    expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("pass");
+    expect(findings.find((item) => item.id === "mixed-content")?.status).toBe("not_observed");
     expect(findings.find((item) => item.id === "forms")?.status).toBe("pass");
   });
   it("signale un certificat expiré et une CSP permissive", () => {
