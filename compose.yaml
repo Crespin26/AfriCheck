@@ -26,10 +26,11 @@ services:
       REPORT_SIGNING_KEY: ${REPORT_SIGNING_KEY:?REPORT_SIGNING_KEY must be set}
       LOG_HASH_KEY: ${LOG_HASH_KEY:?LOG_HASH_KEY must be set}
       HISTORY_RETENTION_DAYS: ${HISTORY_RETENTION_DAYS:-90}
+      CLIENT_IP_HEADER: ${CLIENT_IP_HEADER:-x-forwarded-for}
       TRUST_PROXY_HEADERS: ${TRUST_PROXY_HEADERS:-false}
     command: ["sh", "-c", "node scripts/migrate.mjs && node server.js"]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     read_only: true
     tmpfs:
       - /tmp:size=64m,mode=1777

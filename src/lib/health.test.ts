@@ -9,6 +9,10 @@ describe("readiness", () => {
     expect(readiness({ REPORT_SIGNING_KEY: "short" }, "24.0.0")).toMatchObject({ ready: false, checks: { configuration: "error" } });
     expect(readiness({ REPORT_SIGNING_KEY: "k".repeat(32) }, "24.0.0").ready).toBe(true);
   });
+  it("valide le nom d’en-tête client autorisé", () => {
+    expect(readiness({ CLIENT_IP_HEADER: "arbitrary-header" }, "24.0.0").ready).toBe(false);
+    expect(readiness({ CLIENT_IP_HEADER: "cf-connecting-ip" }, "24.0.0").ready).toBe(true);
+  });
   it("rejette une valeur proxy ambiguë", () => expect(readiness({ TRUST_PROXY_HEADERS: "yes" }, "24.0.0")).toMatchObject({ ready: false, checks: { configuration: "error" } }));
   it("borne la concurrence des scans", () => {
     expect(readiness({ SCAN_MAX_CONCURRENCY: "8" }, "24.0.0")).toMatchObject({ ready: true, checks: { configuration: "ok" } });

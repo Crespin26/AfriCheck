@@ -1,8 +1,8 @@
 export type Readiness = { ready: boolean; checks: { runtime: "ok" | "error"; configuration: "ok" | "error"; domainVerification: "ok" | "disabled" | "error"; history: "ok" | "disabled" | "error" } };
-type RuntimeEnvironment = { TRUST_PROXY_HEADERS?: string; LOG_HASH_KEY?: string; REPORT_SIGNING_KEY?: string; DOMAIN_VERIFICATION_KEY?: string; DATABASE_URL?: string; DATABASE_SSL?: string; HISTORY_RETENTION_DAYS?: string; SCAN_MAX_CONCURRENCY?: string };
+type RuntimeEnvironment = { TRUST_PROXY_HEADERS?: string; CLIENT_IP_HEADER?: string; LOG_HASH_KEY?: string; REPORT_SIGNING_KEY?: string; DOMAIN_VERIFICATION_KEY?: string; DATABASE_URL?: string; DATABASE_SSL?: string; HISTORY_RETENTION_DAYS?: string; SCAN_MAX_CONCURRENCY?: string };
 
 export function readiness(env?: RuntimeEnvironment, nodeVersion = process.versions.node): Readiness {
-  const environment = env ?? { TRUST_PROXY_HEADERS: process.env.TRUST_PROXY_HEADERS, LOG_HASH_KEY: process.env.LOG_HASH_KEY, REPORT_SIGNING_KEY: process.env.REPORT_SIGNING_KEY, DOMAIN_VERIFICATION_KEY: process.env.DOMAIN_VERIFICATION_KEY, DATABASE_URL: process.env.DATABASE_URL, DATABASE_SSL: process.env.DATABASE_SSL, HISTORY_RETENTION_DAYS: process.env.HISTORY_RETENTION_DAYS, SCAN_MAX_CONCURRENCY: process.env.SCAN_MAX_CONCURRENCY };
+  const environment = env ?? { TRUST_PROXY_HEADERS: process.env.TRUST_PROXY_HEADERS, CLIENT_IP_HEADER: process.env.CLIENT_IP_HEADER, LOG_HASH_KEY: process.env.LOG_HASH_KEY, REPORT_SIGNING_KEY: process.env.REPORT_SIGNING_KEY, DOMAIN_VERIFICATION_KEY: process.env.DOMAIN_VERIFICATION_KEY, DATABASE_URL: process.env.DATABASE_URL, DATABASE_SSL: process.env.DATABASE_SSL, HISTORY_RETENTION_DAYS: process.env.HISTORY_RETENTION_DAYS, SCAN_MAX_CONCURRENCY: process.env.SCAN_MAX_CONCURRENCY };
   const [major, minor] = nodeVersion.split(".").map(Number);
   const runtime = major > 20 || (major === 20 && minor >= 9) ? "ok" : "error";
   const proxyValueValid = environment.TRUST_PROXY_HEADERS === undefined || environment.TRUST_PROXY_HEADERS === "true" || environment.TRUST_PROXY_HEADERS === "false";
@@ -10,7 +10,8 @@ export function readiness(env?: RuntimeEnvironment, nodeVersion = process.versio
   const concurrency = environment.SCAN_MAX_CONCURRENCY === undefined ? 4 : Number(environment.SCAN_MAX_CONCURRENCY);
   const concurrencyValid = Number.isInteger(concurrency) && concurrency >= 1 && concurrency <= 32;
   const reportKeyValid = environment.REPORT_SIGNING_KEY === undefined || Buffer.byteLength(environment.REPORT_SIGNING_KEY, "utf8") >= 32;
-  const configuration = proxyValueValid && hashKeyValid && concurrencyValid && reportKeyValid ? "ok" : "error";
+  const clientIpHeaderValid = environment.CLIENT_IP_HEADER === undefined || ["x-forwarded-for", "cf-connecting-ip", "x-vercel-forwarded-for"].includes(environment.CLIENT_IP_HEADER);
+  const configuration = clientIpHeaderValid && proxyValueValid && hashKeyValid && concurrencyValid && reportKeyValid ? "ok" : "error";
   const domainVerification = environment.DOMAIN_VERIFICATION_KEY === undefined ? "disabled" : Buffer.byteLength(environment.DOMAIN_VERIFICATION_KEY, "utf8") >= 32 ? "ok" : "error";
   let history: Readiness["checks"]["history"] = "disabled";
   if (environment.DATABASE_URL !== undefined) {

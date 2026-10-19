@@ -1,3 +1,5 @@
+import { isIP } from "node:net";
+
 export type RateLimitDecision = { allowed: boolean; limit: number; remaining: number; retryAfterSeconds: number; resetAt: number; };
 
 type Entry = { count: number; resetAt: number };
@@ -27,8 +29,15 @@ export class FixedWindowRateLimiter {
 
 export function requestIdentity(request: Request): string {
   if (process.env.TRUST_PROXY_HEADERS !== "true") return "shared";
-  const candidate = request.headers.get("x-vercel-forwarded-for") ?? request.headers.get("cf-connecting-ip") ?? request.headers.get("x-forwarded-for")?.split(",")[0];
-  return candidate?.trim().slice(0, 64) || "unknown";
+  const header = process.env.CLIENT_IP_HEADER ?? "x-forwarded-for";
+  if (!["x-forwarded-for", "cf-connecting-ip", "x-vercel-forwarded-for"].includes(header)) return "unknown";
+  const raw = request.headers.get(header);
+  const candidate = (header === "x-forwarded-for" ? raw?.split(",")[0] : raw)?.trim();
+  const version = isIP(candidate ?? "");
+  if (!candidate || !version) return "unknown";
+  if (version === 4) return candidate;
+  try { return new URL(`http://[${candidate}]/`).hostname.slice(1, -1); }
+  catch { return "unknown"; }
 }
 
 export function rateLimitHeaders(decision: RateLimitDecision): HeadersInit {

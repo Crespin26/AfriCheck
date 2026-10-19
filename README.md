@@ -66,6 +66,7 @@ Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main
 
 ## Configuration d’exploitation
 
+- `CLIENT_IP_HEADER=x-forwarded-for|cf-connecting-ip|x-vercel-forwarded-for` : en-tête client unique à utiliser lorsque le proxy est approuvé, `x-forwarded-for` par défaut. Les autres en-têtes fournisseurs sont ignorés. Les adresses invalides partagent une identité de repli et les IPv6 sont normalisées.
 - `TRUST_PROXY_HEADERS=true` : active l’identification par adresse transmise uniquement lorsque l’application est placée derrière un proxy de confiance qui remplace ces en-têtes ;
 - `LOG_HASH_KEY` : secret aléatoire d’au moins 32 caractères utilisé pour pseudonymiser l’identité réseau dans les journaux. Sans ce secret, aucune empreinte client n’est enregistrée.
 - `DOMAIN_VERIFICATION_KEY` : secret aléatoire d’au moins 32 caractères utilisé pour signer les challenges et preuves de contrôle de domaine. Sans ce secret, les endpoints de vérification restent désactivés ; une valeur trop courte fait échouer la readiness.
@@ -106,7 +107,7 @@ L’image de production est multi-stage, construite depuis le fichier de verroui
 
 ```bash
 docker build -t africheck .
-docker run --rm -p 3000:3000 --env-file .env.production africheck
+docker run --rm -p 127.0.0.1:3000:3000 --env-file .env.production africheck
 ```
 
 Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`, `DOMAIN_VERIFICATION_KEY`, `REPORT_SIGNING_KEY` et `LOG_HASH_KEY` dans l’environnement, puis lancez `docker compose up --build -d`. La base n’est pas exposée sur l’hôte, le conteneur applicatif retire ses capabilities Linux, utilise un système de fichiers en lecture seule et applique les migrations sous verrou avant de démarrer.
