@@ -9,6 +9,9 @@ const checks = [
   ["Pages & formulaires", "Actions non chiffrées et contenu mixte"],
 ];
 
+/**
+ * Compose la page d’accueil et le formulaire de diagnostic avec les contrôles et limites présentés au visiteur.
+ */
 export default async function Home() {
   await connection();
   return (

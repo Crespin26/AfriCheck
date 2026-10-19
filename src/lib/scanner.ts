@@ -7,6 +7,10 @@ import { inspectHtml } from "./html-inspection";
 import { isEvaluatedFinding } from "./report";
 import { technologyExposureFinding } from "./technology-exposure";
 
+/**
+ * Calcule le pourcentage sur les seuls contrôles évalués, puis attribue une note de A à E.
+ * Un échec HTTPS ou TLS plafonne le score à 49, quelles que soient les autres protections.
+ */
 export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "grade"> {
   const evaluated = findings.filter(isEvaluatedFinding);
   const maximum = evaluated.reduce((sum, item) => sum + item.maxPoints, 0);
@@ -18,8 +22,14 @@ export function scoreFindings(findings: Finding[]): Pick<ScanResult, "score" | "
   return { score, grade };
 }
 
+/**
+ * Ajoute un constat à la liste des contrôles du diagnostic.
+ */
 function add(findings: Finding[], finding: Finding) { findings.push(finding); }
 
+/**
+ * Vérifie les attributs de protection attendus d’un cookie et la cohérence de SameSite=None avec Secure.
+ */
 function cookieIsProtected(cookie: string, https: boolean): boolean {
   if (!https) return false;
   const segments = cookie.split(";").map((segment) => segment.trim());
@@ -38,6 +48,9 @@ function cookieIsProtected(cookie: string, https: boolean): boolean {
   return true;
 }
 
+/**
+ * Évalue le certificat observé et sa période de validité, ou indique que le contrôle est indisponible.
+ */
 function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
   if (!https) return { id: "tls", title: "Certificat TLS", status: "not_applicable", points: 0, maxPoints: 10, observation: "La page HTTP ne présente pas de certificat TLS.", recommendation: "Passez la page à HTTPS pour protéger la connexion." };
   const expiry = tls?.validTo ? Date.parse(tls.validTo) : NaN;
@@ -56,6 +69,9 @@ function analyzeTls(tls: TlsInfo | undefined, https: boolean): Finding {
   };
 }
 
+/**
+ * Contrôle la présence et la durée de HSTS en tenant compte de HTTPS et des directives max-age ambiguës.
+ */
 function analyzeHsts(header: string, https: boolean): Finding {
   const duplicateMaxAge = [...header.matchAll(/(?:^|;)\s*max-age\s*=/gi)].length > 1;
   const maxAgeMatch = header.match(/(?:^|;)\s*max-age\s*=\s*(\d+)\s*(?:;|$)/i);
@@ -69,6 +85,9 @@ function analyzeHsts(header: string, https: boolean): Finding {
   };
 }
 
+/**
+ * Repère les sources et mécanismes de script jugés permissifs dans la politique CSP observée.
+ */
 function cspIsWeak(header: string): boolean {
   const directives = new Map<string, string[]>();
   for (const rawDirective of header.split(";")) {
@@ -84,6 +103,9 @@ function cspIsWeak(header: string): boolean {
   return [...directives.entries()].some(([name, sources]) => (name.endsWith("-src") || name === "frame-ancestors") && sources.includes("*"));
 }
 
+/**
+ * Classe la politique de transmission du référent selon les valeurs reconnues dans l’en-tête.
+ */
 function analyzeReferrerPolicy(header: string): Finding {
   const recognized = new Set(["no-referrer", "no-referrer-when-downgrade", "origin", "origin-when-cross-origin", "same-origin", "strict-origin", "strict-origin-when-cross-origin", "unsafe-url"]);
   const effective = header.split(",").map((value) => value.trim().toLowerCase()).reverse().find((value) => recognized.has(value));
@@ -95,6 +117,9 @@ function analyzeReferrerPolicy(header: string): Finding {
   };
 }
 
+/**
+ * Examine les restrictions déclarées pour les fonctionnalités sensibles prises en compte par ce contrôle.
+ */
 function analyzePermissionsPolicy(header: string): Finding {
   const directives = new Map<string, string>();
   let invalid = false;
@@ -115,6 +140,9 @@ function analyzePermissionsPolicy(header: string): Finding {
   };
 }
 
+/**
+ * Recherche une directive frame-ancestors exploitable pour évaluer la protection contre l’intégration en iframe.
+ */
 function cspFrameProtection(header: string): boolean | undefined {
   const directive = header.split(";").map((value) => value.trim()).find((value) => /^frame-ancestors(?:\s|$)/i.test(value));
   if (directive === undefined) return undefined;
@@ -123,6 +151,10 @@ function cspFrameProtection(header: string): boolean | undefined {
   return sources.length > 0 && sources.every((source) => !broadSources.has(source.toLowerCase()));
 }
 
+/**
+ * Transforme la réponse finale et les redirections observées en constats de sécurité.
+ * L’analyse reste statique : elle n’exécute pas JavaScript et ne charge pas les ressources référencées.
+ */
 export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   const findings: Finding[] = [];
   const https = response.finalUrl.protocol === "https:";
@@ -216,6 +248,9 @@ export function analyzeResponse(url: URL, response: ScanResponse): Finding[] {
   return findings;
 }
 
+/**
+ * Normalise la cible, récupère sa réponse avec les protections réseau, puis assemble le diagnostic et son score v2.
+ */
 export async function scanWebsite(input: string): Promise<ScanResult> {
   const started = Date.now();
   const url = normalizeUrl(input);

@@ -1,3 +1,6 @@
+/**
+ * Applique les migrations SQL manquantes dans l’ordre, chacune dans sa transaction, sous verrou PostgreSQL.
+ */
 import { readFile, readdir } from "node:fs/promises";
 import path from "node:path";
 import process from "node:process";

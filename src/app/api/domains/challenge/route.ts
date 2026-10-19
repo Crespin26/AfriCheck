@@ -9,6 +9,9 @@ import { resolvePublicUrl } from "@/lib/url-safety";
 const limiter = new HybridRateLimiter("domain-challenge", 5, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 4096;
 
+/**
+ * Émet un challenge lié au navigateur après contrôle du quota et de la destination DNS publique.
+ */
 export async function POST(request: Request) {
   const requestId = createRequestId();
   const decision = await limiter.check(requestIdentity(request));

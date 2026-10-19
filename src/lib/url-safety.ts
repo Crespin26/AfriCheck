@@ -23,12 +23,18 @@ for (const [network, prefix] of [
   ["fc00::", 7], ["fe80::", 10], ["ff00::", 8],
 ] as const) blocked.addSubnet(network, prefix, "ipv6");
 
+/**
+ * Écarte les adresses privées, locales et réservées couvertes par les listes de blocage IPv4 et IPv6.
+ */
 export function isPublicIp(address: string): boolean {
   if (address.toLowerCase().startsWith("::ffff:")) return false;
   const family = isIP(address);
   return family === 4 ? !blocked.check(address, "ipv4") : family === 6 ? !blocked.check(address, "ipv6") : false;
 }
 
+/**
+ * Normalise l’adresse fournie, ajoute HTTPS si nécessaire et refuse les protocoles, identifiants et ports non autorisés.
+ */
 export function normalizeUrl(input: string): URL {
   const value = input.trim();
   if (!value || value.length > 2048) throw new ScanError("INVALID_URL", "Adresse web invalide.");
@@ -42,6 +48,10 @@ export function normalizeUrl(input: string): URL {
 
 const defaultResolver: Resolver = async (hostname) => lookup(hostname, { all: true, verbatim: true });
 
+/**
+ * Résout la cible et refuse toute réponse DNS contenant une adresse interdite.
+ * Renvoie une adresse contrôlée que le transport utilisera directement pour limiter le rebinding DNS.
+ */
 export async function resolvePublicUrl(url: URL, resolver: Resolver = defaultResolver): Promise<ResolvedAddress> {
   const hostname = url.hostname.toLowerCase().replace(/\.$/, "");
   if (blockedHostnames.has(hostname) || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname.endsWith(".internal")) {

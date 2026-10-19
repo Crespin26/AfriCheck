@@ -8,14 +8,24 @@ type CounterRow = QueryResultRow & { request_count: number | string };
 export type RateLimitQuery = <T extends QueryResultRow>(text: string, values?: unknown[]) => Promise<{ rows: T[] }>;
 type Dependencies = { query?: RateLimitQuery; hashKey?: string };
 
+/**
+ * Exécute les opérations de quota au moyen du pool PostgreSQL partagé du processus.
+ */
 function defaultQuery<T extends QueryResultRow>(text: string, values?: unknown[]) {
   return databasePool().query<T>(text, values);
 }
 
+/**
+ * Signale le repli sur un quota local sans écrire l’identité du visiteur dans les journaux.
+ */
 function privacySafeWarning(scope: string): void {
   console.warn(JSON.stringify({ timestamp: new Date().toISOString(), service: "africheck", event: "rate_limit.local_fallback", scope }));
 }
 
+/**
+ * Partage les quotas dans PostgreSQL avec une identité pseudonymisée par HMAC.
+ * Utilise un compteur local si la configuration manque ou si PostgreSQL est indisponible.
+ */
 export class HybridRateLimiter {
   private readonly local: FixedWindowRateLimiter;
 
@@ -24,6 +34,9 @@ export class HybridRateLimiter {
     this.local = new FixedWindowRateLimiter(limit, windowMs);
   }
 
+  /**
+   * Incrémente atomiquement le compteur partagé de la fenêtre courante, avec repli local en cas d’échec.
+   */
   async check(identity: string, now = Date.now()): Promise<RateLimitDecision> {
     const hashKey = this.dependencies.hashKey ?? process.env.LOG_HASH_KEY;
     const databaseEnabled = Boolean(this.dependencies.query || process.env.DATABASE_URL);

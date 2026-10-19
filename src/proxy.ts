@@ -1,6 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { buildContentSecurityPolicy } from "@/lib/security-policy";
 
+/**
+ * Génère un nonce par requête et transmet la CSP au rendu Next.js ainsi qu’à la réponse HTTP.
+ */
 export function proxy(request: NextRequest) {
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
   const policy = buildContentSecurityPolicy(nonce, process.env.NODE_ENV === "development");

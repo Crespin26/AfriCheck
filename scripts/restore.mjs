@@ -1,3 +1,6 @@
+/**
+ * Restaure une archive custom dans une nouvelle base ; refuse tout remplacement de base existante.
+ */
 import { open } from "node:fs/promises";
 import { databaseCommand } from "./compose-database.mjs";
 
@@ -10,7 +13,7 @@ try {
   const header = Buffer.alloc(5);
   await file.read(header, 0, 5, 0);
   if (header.toString() !== "PGDMP") throw new Error("Archive PostgreSQL au format custom requise.");
-  // createdb fails if the destination exists. Never drop or overwrite it.
+  // createdb refuse une destination existante ; aucune base n’est supprimée ou remplacée.
   await databaseCommand(["createdb", "--username=africheck", "--template=template0", database]);
   try {
     await databaseCommand([

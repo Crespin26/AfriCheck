@@ -28,6 +28,9 @@ const publicMessages: Record<DomainVerificationCode, { message: string; status: 
   VERIFICATION_FILE_MISMATCH: { message: "Le contenu du fichier de vérification ne correspond pas au challenge.", status: 422 },
 };
 
+/**
+ * Associe une erreur de preuve de domaine à un code stable, un message public et un statut HTTP.
+ */
 export class DomainVerificationError extends Error {
   readonly status: number;
   constructor(public readonly code: DomainVerificationCode) {
@@ -53,32 +56,50 @@ export type DomainChallenge = { challenge: string; verificationUrl: string; host
 export type OwnershipProof = { proof: string; hostname: string; expiresAt: string };
 export type WebsiteFetcher = (url: URL, options: TransportOptions) => Promise<ScanResponse>;
 
+/**
+ * Charge une clé de signature d’au moins 32 octets ; désactive la vérification si elle est absente ou trop courte.
+ */
 export function domainVerificationKey(value = process.env.DOMAIN_VERIFICATION_KEY): Buffer {
   if (!value || Buffer.byteLength(value, "utf8") < 32) throw new DomainVerificationError("VERIFICATION_DISABLED");
   return Buffer.from(value, "utf8");
 }
 
+/**
+ * Valide le format du secret du navigateur et calcule l’empreinte à laquelle les jetons sont liés.
+ */
 export function hashClientSecret(clientSecret: string): string {
   if (!BASE64URL_32_BYTES.test(clientSecret)) throw new DomainVerificationError("INVALID_CLIENT_SECRET");
   return createHash("sha256").update(clientSecret, "utf8").digest("base64url");
 }
 
+/**
+ * Refuse un identifiant navigateur qui ne respecte pas le format base64url attendu.
+ */
 function validateSubject(subject: string): void {
   if (!BASE64URL_32_BYTES.test(subject)) throw new DomainVerificationError("INVALID_SUBJECT");
 }
 
+/**
+ * Signe la charge utile avec HMAC-SHA-256 ; le jeton est authentifié, mais son contenu n’est pas chiffré.
+ */
 function signPayload(payload: SignedPayload, key: Buffer): string {
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   const signature = createHmac("sha256", key).update(encoded).digest("base64url");
   return `${encoded}.${signature}`;
 }
 
+/**
+ * Compare deux chaînes de même taille en temps constant pour vérifier les signatures et les secrets dérivés.
+ */
 function safeEqual(left: string, right: string): boolean {
   const a = Buffer.from(left, "utf8");
   const b = Buffer.from(right, "utf8");
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
+/**
+ * Vérifie la signature, le type, la structure, les dates et la cohérence du domaine avant d’accepter un jeton.
+ */
 function parseToken(token: string, expectedKind: TokenKind, key: Buffer, now: number): SignedPayload {
   if (token.length > 2048) throw new DomainVerificationError("INVALID_CHALLENGE");
   const [encoded, signature, extra] = token.split(".");
@@ -104,6 +125,10 @@ function parseToken(token: string, expectedKind: TokenKind, key: Buffer, now: nu
   return typed;
 }
 
+/**
+ * Émet un challenge signé valable 15 minutes, lié au navigateur et au domaine.
+ * Le fichier demandé est toujours publié en HTTPS à un chemin fixe.
+ */
 export function createDomainChallenge(input: string, subject: string, key: Buffer, now = Date.now(), nonce = randomBytes(32).toString("base64url")): DomainChallenge {
   validateSubject(subject);
   if (!BASE64URL_32_BYTES.test(nonce)) throw new DomainVerificationError("INVALID_CHALLENGE");
@@ -114,6 +139,10 @@ export function createDomainChallenge(input: string, subject: string, key: Buffe
   return { challenge: signPayload(payload, key), verificationUrl: new URL(WELL_KNOWN_PATH, origin).href, hostname: url.hostname, expiresAt: new Date(payload.exp).toISOString() };
 }
 
+/**
+ * Lit le fichier de challenge en HTTPS avec certificat valide, sans suivre de redirection.
+ * Émet une preuve de 30 jours uniquement si le fichier et le secret du navigateur correspondent.
+ */
 export async function verifyDomainChallenge(input: { challenge: string; clientSecret: string }, key: Buffer, now = Date.now(), fetcher: WebsiteFetcher = fetchWebsite): Promise<OwnershipProof> {
   const payload = parseToken(input.challenge, "challenge", key, now);
   const subject = hashClientSecret(input.clientSecret);
@@ -129,12 +158,18 @@ export async function verifyDomainChallenge(input: { challenge: string; clientSe
   return { proof: signPayload(proofPayload, key), hostname: payload.host, expiresAt: new Date(proofPayload.exp).toISOString() };
 }
 
+/**
+ * Valide la preuve signée et son lien avec le secret du navigateur, sans refaire de requête au domaine.
+ */
 export function verifyOwnershipProof(proof: string, clientSecret: string, key: Buffer, now = Date.now()): { hostname: string; subject: string } {
   const payload = parseToken(proof, "ownership", key, now);
   if (!safeEqual(hashClientSecret(clientSecret), payload.subject)) throw new DomainVerificationError("SUBJECT_MISMATCH");
   return { hostname: payload.host, subject: payload.subject };
 }
 
+/**
+ * Traduit uniquement les erreurs de vérification reconnues en code, message public et statut HTTP.
+ */
 export function toDomainVerificationError(error: unknown): { code: DomainVerificationCode; message: string; status: number } | undefined {
   if (!(error instanceof DomainVerificationError)) return undefined;
   return { code: error.code, message: publicMessages[error.code].message, status: publicMessages[error.code].status };

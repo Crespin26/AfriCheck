@@ -27,6 +27,9 @@ type ScanWithHistory = ScanResult & {
   };
 };
 
+/**
+ * Prépare la preuve locale et le secret à joindre au scan si une vérification existe pour cette cible.
+ */
 async function storedOwnership(
   input: string,
 ): Promise<{ proof: string; clientSecret: string } | undefined> {
@@ -47,6 +50,9 @@ async function storedOwnership(
   }
 }
 
+/**
+ * Pilote le formulaire, le diagnostic, l’affichage des constats et le téléchargement du rapport.
+ */
 export function ScanForm() {
   const [url, setUrl] = useState("");
   const [result, setResult] = useState<ScanWithHistory | null>(null);
@@ -54,6 +60,9 @@ export function ScanForm() {
   const [loading, setLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
 
+  /**
+   * Soumet la cible et sa preuve éventuelle, puis affiche le résultat ou une erreur et libère l’état de chargement.
+   */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setLoading(true);
@@ -79,6 +88,9 @@ export function ScanForm() {
     }
   }
 
+  /**
+   * Demande le PDF avec l’autorisation reçue lors du scan et déclenche son téléchargement dans le navigateur.
+   */
   async function exportReport() {
     if (!result) return;
     setExporting(true);

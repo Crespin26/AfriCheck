@@ -4,6 +4,9 @@ export type ErrorCode =
   | "TLS_INVALID" | "UNSUPPORTED_ENCODING" | "INVALID_REDIRECT" | "TOO_MANY_REDIRECTS"
   | "UPSTREAM_HTTP_ERROR" | "UPSTREAM_UNREACHABLE" | "INTERNAL_ERROR";
 
+/**
+ * Porte le code métier d’un échec de scan ; sa traduction publique reste centralisée.
+ */
 export class ScanError extends Error {
   constructor(public readonly code: ErrorCode, message: string, public readonly httpStatus = 422) {
     super(message);
@@ -35,6 +38,9 @@ const errorCodes = new Set<ErrorCode>([
   "UPSTREAM_HTTP_ERROR", "UPSTREAM_UNREACHABLE", "INTERNAL_ERROR",
 ]);
 
+/**
+ * Reconnaît les erreurs métier dont le code et le statut HTTP peuvent être exposés au client.
+ */
 function isKnownScanError(error: unknown): error is ScanError {
   if (!error || typeof error !== "object") return false;
   const candidate = error as Partial<ScanError>;
@@ -42,6 +48,9 @@ function isKnownScanError(error: unknown): error is ScanError {
     typeof candidate.message === "string" && typeof candidate.httpStatus === "number" && candidate.httpStatus >= 400 && candidate.httpStatus <= 599;
 }
 
+/**
+ * Recherche une panne réseau connue, y compris dans les causes imbriquées, avec une profondeur bornée.
+ */
 function isNetworkFailure(error: unknown, seen = new WeakSet<object>(), depth = 0): boolean {
   if (!error || typeof error !== "object" || depth > 4 || seen.has(error)) return false;
   seen.add(error);
@@ -52,6 +61,9 @@ function isNetworkFailure(error: unknown, seen = new WeakSet<object>(), depth = 
   return Array.isArray(candidate.errors) && candidate.errors.some((nested) => isNetworkFailure(nested, seen, depth + 1));
 }
 
+/**
+ * Transforme les erreurs en réponses publiques stables sans divulguer les détails internes ou réseau.
+ */
 export function toPublicError(error: unknown): PublicError {
   if (isKnownScanError(error)) return { code: error.code, ...publicErrors[error.code] };
   if (isNetworkFailure(error)) {

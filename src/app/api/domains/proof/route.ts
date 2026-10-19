@@ -7,6 +7,9 @@ import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 const limiter = new HybridRateLimiter("domain-proof", 20, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 8192;
 
+/**
+ * Revalide une preuve existante et son secret navigateur sans contacter à nouveau le site cible.
+ */
 export async function POST(request: Request) {
   const requestId = createRequestId();
   const decision = await limiter.check(requestIdentity(request));

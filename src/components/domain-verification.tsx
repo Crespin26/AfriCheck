@@ -25,6 +25,9 @@ type HistoryItem = {
 };
 type Phase = "idle" | "creating" | "ready" | "verifying" | "verified";
 
+/**
+ * Lit un objet JSON exploitable ou renvoie un objet vide si la réponse est invalide.
+ */
 async function responseData(
   response: Response,
 ): Promise<Record<string, unknown>> {
@@ -36,10 +39,16 @@ async function responseData(
   }
 }
 
+/**
+ * Extrait le message d’erreur fourni par l’API ou utilise le message de repli.
+ */
 function errorMessage(data: Record<string, unknown>, fallback: string): string {
   return typeof data.error === "string" ? data.error : fallback;
 }
 
+/**
+ * Vérifie les champs attendus de la réponse de création du challenge.
+ */
 function isChallenge(
   data: Record<string, unknown>,
 ): data is Record<string, unknown> & Challenge {
@@ -52,6 +61,9 @@ function isChallenge(
   );
 }
 
+/**
+ * Vérifie les champs attendus de la preuve renvoyée après validation du domaine.
+ */
 function isProof(
   data: Record<string, unknown>,
 ): data is Record<string, unknown> & StoredOwnershipProof {
@@ -63,6 +75,9 @@ function isProof(
   );
 }
 
+/**
+ * Récupère l’historique autorisé ; une indisponibilité ne remet pas en cause la preuve de propriété.
+ */
 async function requestHistory(
   proof: string,
   clientSecret: string,
@@ -90,6 +105,9 @@ async function requestHistory(
   } catch { return undefined; }
 }
 
+/**
+ * Gère les étapes de preuve de domaine et affiche l’historique après validation par le serveur.
+ */
 export function DomainVerification({ targetUrl }: { targetUrl: string }) {
   const [phase, setPhase] = useState<Phase>("idle");
   const [challenge, setChallenge] = useState<Challenge | null>(null);
@@ -108,6 +126,7 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
     }
   })();
 
+  // Revalide la preuve locale auprès du serveur avant de rétablir l’état vérifié et de charger l’historique.
   useEffect(() => {
     const timer = window.setTimeout(() => {
       const stored = readOwnershipProof(browserStorage(), hostname);
@@ -141,6 +160,9 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
     return () => window.clearTimeout(timer);
   }, [hostname]);
 
+  /**
+   * Crée l’identité navigateur puis demande le fichier de challenge à publier sur le site cible.
+   */
   async function createChallenge() {
     setPhase("creating");
     setError("");
@@ -180,6 +202,9 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
     }
   }
 
+  /**
+   * Copie le challenge dans le presse-papiers et indique si le navigateur refuse cette opération.
+   */
   async function copyChallenge() {
     if (!challenge) return;
     try {
@@ -192,6 +217,9 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
     }
   }
 
+  /**
+   * Télécharge le fichier texte à publier au chemin de vérification indiqué.
+   */
   function downloadChallenge() {
     if (!challenge) return;
     const blobUrl = URL.createObjectURL(
@@ -209,6 +237,9 @@ export function DomainVerification({ targetUrl }: { targetUrl: string }) {
     );
   }
 
+  /**
+   * Demande la vérification du fichier publié, conserve la preuve obtenue et charge l’historique disponible.
+   */
   async function verify() {
     if (!challenge || !secret) return;
     setPhase("verifying");

@@ -1,6 +1,9 @@
 import { readiness } from "@/lib/health";
 import { databasePool } from "@/lib/database";
 
+/**
+ * Vérifie la configuration et, si activé, l’accès au schéma PostgreSQL avant de déclarer le service prêt.
+ */
 export async function GET() {
   let result = readiness();
   if (result.ready && result.checks.history === "ok") {

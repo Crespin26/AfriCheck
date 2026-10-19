@@ -1,3 +1,6 @@
+/**
+ * Distingue un dépassement de taille d’un corps JSON ou UTF-8 invalide.
+ */
 export class RequestBodyError extends Error {
   constructor(readonly code: "TOO_LARGE" | "INVALID_JSON") {
     super(code);
@@ -5,6 +8,10 @@ export class RequestBodyError extends Error {
   }
 }
 
+/**
+ * Lit un JSON UTF-8 en bornant la taille annoncée et les octets réellement reçus.
+ * Le type générique ne valide pas la structure métier : chaque route doit vérifier les champs attendus.
+ */
 export async function readJsonBody<T>(
   request: Request,
   maxBytes: number,

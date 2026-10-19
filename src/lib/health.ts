@@ -1,6 +1,9 @@
 export type Readiness = { ready: boolean; checks: { runtime: "ok" | "error"; configuration: "ok" | "error"; domainVerification: "ok" | "disabled" | "error"; history: "ok" | "disabled" | "error" } };
 type RuntimeEnvironment = { TRUST_PROXY_HEADERS?: string; CLIENT_IP_HEADER?: string; LOG_HASH_KEY?: string; REPORT_SIGNING_KEY?: string; DOMAIN_VERIFICATION_KEY?: string; DATABASE_URL?: string; DATABASE_SSL?: string; HISTORY_RETENTION_DAYS?: string; SCAN_MAX_CONCURRENCY?: string };
 
+/**
+ * Vérifie le runtime et la configuration des services optionnels sans effectuer d’accès réseau à PostgreSQL.
+ */
 export function readiness(env?: RuntimeEnvironment, nodeVersion = process.versions.node): Readiness {
   const environment = env ?? { TRUST_PROXY_HEADERS: process.env.TRUST_PROXY_HEADERS, CLIENT_IP_HEADER: process.env.CLIENT_IP_HEADER, LOG_HASH_KEY: process.env.LOG_HASH_KEY, REPORT_SIGNING_KEY: process.env.REPORT_SIGNING_KEY, DOMAIN_VERIFICATION_KEY: process.env.DOMAIN_VERIFICATION_KEY, DATABASE_URL: process.env.DATABASE_URL, DATABASE_SSL: process.env.DATABASE_SSL, HISTORY_RETENTION_DAYS: process.env.HISTORY_RETENTION_DAYS, SCAN_MAX_CONCURRENCY: process.env.SCAN_MAX_CONCURRENCY };
   const [major, minor] = nodeVersion.split(".").map(Number);

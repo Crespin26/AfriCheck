@@ -13,6 +13,9 @@ import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 const limiter = new HybridRateLimiter("report", 10, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 65_536;
 
+/**
+ * Valide le rapport et son autorisation signée avant de générer le PDF téléchargeable, sous quota.
+ */
 export async function POST(request: Request) {
   const requestId = createRequestId();
   const decision = await limiter.check(requestIdentity(request));

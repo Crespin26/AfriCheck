@@ -1,3 +1,6 @@
+/**
+ * Valide le proxy HTTPS, l’isolation des ports et les quotas clients dans un environnement Compose temporaire.
+ */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -85,7 +88,7 @@ try {
   assert.equal(redirect.status, 308);
   assert.equal(redirect.location, "https://localhost/");
 
-  // Keep the first client alive so the second receives a different network IP.
+  // Garde le premier client actif pour attribuer une autre adresse réseau au second.
   client = (await compose("run", "--detach", "--no-deps", "client", "node", "-e", "setInterval(() => {}, 1000)")).stdout.trim();
   const caEnv = `TEST_CA=${Buffer.from(ca).toString("base64")}`;
   const sender = `const https=require("node:https");(async()=>{const statuses=[];for(let i=0;i<Number(process.env.REQUEST_COUNT);i++){statuses.push(await new Promise((resolve,reject)=>{const req=https.request({hostname:"proxy",servername:"localhost",ca:Buffer.from(process.env.TEST_CA,"base64"),path:"/api/scan",method:"POST",headers:{host:"localhost","content-type":"application/json","x-forwarded-for":"203.0.113."+(i+1),"cf-connecting-ip":"198.51.100."+(i+1),"x-vercel-forwarded-for":"192.0.2."+(i+1)}},res=>{res.resume();res.on("end",()=>resolve(res.statusCode))});req.on("error",reject);req.end(JSON.stringify({url:"http://127.0.0.1"}))}))}console.log(JSON.stringify(statuses))})().catch(e=>{console.error(e.message);process.exitCode=1})`;

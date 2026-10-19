@@ -13,14 +13,23 @@ type ScanEvent = {
   clientFingerprint?: string;
 };
 
+/**
+ * Crée un identifiant de corrélation pour retrouver une requête dans les réponses et les journaux.
+ */
 export function createRequestId(): string { return randomUUID(); }
 
+/**
+ * Produit une empreinte HMAC tronquée pour les journaux lorsque la clé et une identité exploitable sont disponibles.
+ */
 export function clientFingerprint(identity: string): string | undefined {
   const key = process.env.LOG_HASH_KEY;
   if (!key || key.length < 32 || identity === "shared" || identity === "unknown") return undefined;
   return createHmac("sha256", key).update(identity).digest("hex").slice(0, 16);
 }
 
+/**
+ * Écrit un événement structuré au niveau de journalisation correspondant à son résultat.
+ */
 export function logScanEvent(event: ScanEvent): void {
   const record = JSON.stringify({ timestamp: new Date().toISOString(), service: "africheck", ...event });
   if (event.event === "scan.failed") console.error(record);

@@ -9,6 +9,9 @@ const unavailableStorage: BrowserStorage = {
 const temporaryIdentities = new WeakMap<BrowserStorage, BrowserIdentity>();
 const temporaryProofs = new WeakMap<BrowserStorage, Map<string, StoredOwnershipProof>>();
 
+/**
+ * Accède au stockage local et fournit un repli stable lorsque le navigateur en interdit l’accès.
+ */
 export function browserStorage(): BrowserStorage {
   try { return window.localStorage; }
   catch { return unavailableStorage; }
@@ -17,16 +20,26 @@ export function browserStorage(): BrowserStorage {
 export type BrowserIdentity = { secret: string; subject: string; persistent: boolean };
 export type StoredOwnershipProof = { proof: string; hostname: string; expiresAt: string };
 
+/**
+ * Encode les octets en base64url, sans remplissage, pour les secrets et les empreintes du navigateur.
+ */
 function bytesToBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
   return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
+/**
+ * Vérifie le format attendu du secret local avant de le réutiliser.
+ */
 function validSecret(value: string | null): value is string {
   return typeof value === "string" && /^[A-Za-z0-9_-]{43}$/.test(value);
 }
 
+/**
+ * Crée ou réutilise un secret aléatoire de 256 bits et calcule son empreinte SHA-256.
+ * Le secret reste disponible en mémoire si le stockage local est bloqué ; il sera perdu au rechargement.
+ */
 export async function createBrowserIdentity(storage: BrowserStorage, cryptoApi: Crypto): Promise<BrowserIdentity> {
   if (!cryptoApi?.subtle) throw new Error("La vérification de domaine nécessite une connexion HTTPS à AfriCheck.");
   const temporary = temporaryIdentities.get(storage);
@@ -46,6 +59,9 @@ export async function createBrowserIdentity(storage: BrowserStorage, cryptoApi: 
   return identity;
 }
 
+/**
+ * Conserve la preuve par domaine ; renvoie false et utilise la mémoire si l’écriture locale échoue.
+ */
 export function saveOwnershipProof(storage: BrowserStorage, value: StoredOwnershipProof): boolean {
   if (!value.hostname || !value.proof || !Number.isFinite(Date.parse(value.expiresAt))) return false;
   try {
@@ -68,6 +84,10 @@ export function saveOwnershipProof(storage: BrowserStorage, value: StoredOwnersh
   }
 }
 
+/**
+ * Retrouve une preuve locale non expirée pour le domaine demandé.
+ * Cette lecture ne remplace pas la validation cryptographique effectuée par le serveur.
+ */
 export function readOwnershipProof(storage: BrowserStorage, hostname: string, now = Date.now()): StoredOwnershipProof | undefined {
   const temporary = temporaryProofs.get(storage)?.get(hostname);
   if (temporary && Date.parse(temporary.expiresAt) > now) return temporary;

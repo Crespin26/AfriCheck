@@ -17,7 +17,10 @@ export type HtmlInspection = {
 const attr = (element: Element, name: string) => element.attrs.find((item) => item.name === name)?.value;
 const isElement = (node: DefaultTreeAdapterTypes.Node): node is Element => "tagName" in node;
 
-// Parse the document, never execute scripts or fetch referenced resources.
+/**
+ * Analyse le DOM HTML et les styles intégrés pour relever formulaires, ressources et générateur.
+ * N’exécute aucun script et ne télécharge aucune ressource ; signale les parties qui ne peuvent pas être évaluées.
+ */
 export function inspectHtml(html: string, documentUrl: URL): HtmlInspection {
   const elements: Element[] = [];
   const pending: DefaultTreeAdapterTypes.Node[] = [...parse(html).childNodes].reverse();
@@ -25,7 +28,7 @@ export function inspectHtml(html: string, documentUrl: URL): HtmlInspection {
     const node = pending.pop()!;
     if (!isElement(node)) continue;
     elements.push(node);
-    // Template content is inert; parse5 stores it separately from childNodes.
+    // Le contenu des templates est inerte ; parse5 le conserve séparément des nœuds enfants.
     if (node.tagName !== "template") {
       for (let index = node.childNodes.length - 1; index >= 0; index -= 1) pending.push(node.childNodes[index]);
     }
@@ -47,7 +50,7 @@ export function inspectHtml(html: string, documentUrl: URL): HtmlInspection {
     if (id && !ids.has(id)) ids.set(id, element);
   }
   const addAction = (value: string) => {
-    // Missing or empty action submits to the document, independently of <base>.
+    // Une action absente ou vide soumet vers le document, indépendamment de la balise <base>.
     try { result.formActions.push(value ? new URL(value, result.baseUrl).href : documentUrl.href); }
     catch { result.formIncomplete = true; }
   };

@@ -1,5 +1,8 @@
 export type Release = () => void;
 
+/**
+ * Valide le plafond de scans simultanés par processus : quatre par défaut, entre un et trente-deux.
+ */
 export function scanConcurrencyLimit(value = process.env.SCAN_MAX_CONCURRENCY): number {
   if (value === undefined) return 4;
   const parsed = Number(value);
@@ -7,6 +10,9 @@ export function scanConcurrencyLimit(value = process.env.SCAN_MAX_CONCURRENCY): 
   return parsed;
 }
 
+/**
+ * Limite les scans actifs dans ce processus ; ce plafond n’est pas global entre plusieurs instances.
+ */
 export class ConcurrencyGate {
   private active = 0;
 
@@ -14,6 +20,9 @@ export class ConcurrencyGate {
     if (!Number.isInteger(limit) || limit < 1) throw new Error("Limite de concurrence invalide.");
   }
 
+  /**
+   * Réserve une place ou refuse immédiatement ; la fonction renvoyée libère la place une seule fois.
+   */
   tryAcquire(): Release | undefined {
     if (this.active >= this.limit) return undefined;
     this.active += 1;

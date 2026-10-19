@@ -12,10 +12,16 @@ const LINE = rgb(0.886, 0.914, 0.898);
 const RED = rgb(0.733, 0.231, 0.231);
 const AMBER = rgb(0.733, 0.49, 0.082);
 
+/**
+ * Adapte les caractères aux polices standard utilisées pour éviter une erreur d’encodage dans le PDF.
+ */
 function safeText(value: string): string {
   return value.replace(/[’‘]/g, "'").replace(/[–—‑]/g, "-").replace(/…/g, "...").replace(/[^\x20-\x7E\xA0-\xFF]/g, "?");
 }
 
+/**
+ * Répartit le texte en lignes selon la largeur mesurée avec la police du rapport.
+ */
 function wrap(text: string, font: PDFFont, size: number, width: number): string[] {
   const words = safeText(text).split(/\s+/).filter(Boolean);
   const lines: string[] = [];
@@ -32,6 +38,9 @@ function wrap(text: string, font: PDFFont, size: number, width: number): string[
   return lines.length ? lines : [""];
 }
 
+/**
+ * Dessine les lignes à partir de la position donnée et renvoie la hauteur disponible suivante.
+ */
 function drawLines(page: PDFPage, lines: string[], x: number, y: number, font: PDFFont, size: number, color = INK, lineHeight = size * 1.35): number {
   for (const line of lines) { page.drawText(line, { x, y, font, size, color }); y -= lineHeight; }
   return y;
@@ -39,6 +48,10 @@ function drawLines(page: PDFPage, lines: string[], x: number, y: number, font: P
 
 export type ReportInput = Pick<ScanResult, "finalUrl" | "scannedAt" | "durationMs" | "score" | "grade" | "findings" | "scoringVersion">;
 
+/**
+ * Valide les champs et les bornes du rapport reçu avant toute génération de PDF.
+ * L’autorisation cryptographique est contrôlée séparément par la route d’export.
+ */
 export function parseReportInput(value: unknown): ReportInput {
   if (!value || typeof value !== "object") throw new Error("Rapport invalide.");
   const input = value as Partial<ReportInput>;
@@ -55,6 +68,9 @@ export function parseReportInput(value: unknown): ReportInput {
   return { finalUrl: parsedUrl.toString(), scannedAt: input.scannedAt, durationMs: input.durationMs, score: input.score, grade: input.grade!, findings, ...(input.scoringVersion === 2 ? { scoringVersion: 2 as const } : {}) };
 }
 
+/**
+ * Valide un constat et impose zéro point aux statuts qui ne sont pas évalués.
+ */
 function parseFinding(value: unknown): Finding {
   if (!value || typeof value !== "object") throw new Error("Constat invalide.");
   const item = value as Partial<Finding>;
@@ -66,6 +82,9 @@ function parseFinding(value: unknown): Finding {
   return item as Finding;
 }
 
+/**
+ * Construit le PDF A4 avec synthèse, priorités, constats détaillés et pagination, puis renvoie ses octets.
+ */
 export async function generateReportPdf(input: ReportInput): Promise<Uint8Array> {
   const document = await PDFDocument.create();
   const regular = await document.embedFont(StandardFonts.Helvetica);
@@ -101,6 +120,9 @@ export async function generateReportPdf(input: ReportInput): Promise<Uint8Array>
   return document.save();
 }
 
+/**
+ * Dessine l’en-tête et la synthèse du diagnostic, puis renvoie la position de début du contenu.
+ */
 function drawCover(page: PDFPage, input: ReportInput, regular: PDFFont, bold: PDFFont): number {
   page.drawRectangle({ x: 0, y: A4.height - 138, width: A4.width, height: 138, color: GREEN });
   page.drawText("AfriCheck", { x: MARGIN, y: A4.height - 48, font: bold, size: 18, color: rgb(1, 1, 1) });
@@ -119,18 +141,27 @@ function drawCover(page: PDFPage, input: ReportInput, regular: PDFFont, bold: PD
   return A4.height - 300;
 }
 
+/**
+ * Dessine le rappel d’en-tête des pages suivantes et renvoie la position de reprise du contenu.
+ */
 function drawPageHeader(page: PDFPage, bold: PDFFont): number {
   page.drawText("AfriCheck - Rapport de securite web", { x: MARGIN, y: A4.height - 45, font: bold, size: 10, color: GREEN });
   page.drawLine({ start: { x: MARGIN, y: A4.height - 56 }, end: { x: A4.width - MARGIN, y: A4.height - 56 }, thickness: 1, color: LINE });
   return A4.height - 82;
 }
 
+/**
+ * Dessine un titre de section et réserve l’espace nécessaire au contenu suivant.
+ */
 function drawHeading(page: PDFPage, label: string, y: number, bold: PDFFont): number {
   page.drawText(label, { x: MARGIN, y, font: bold, size: 14, color: INK });
   page.drawLine({ start: { x: MARGIN, y: y - 8 }, end: { x: A4.width - MARGIN, y: y - 8 }, thickness: 1, color: LINE });
   return y - 28;
 }
 
+/**
+ * Dessine un constat avec son statut, ses points applicables, son observation et sa recommandation.
+ */
 function drawFinding(page: PDFPage, finding: Finding, y: number, observation: string[], recommendation: string[], regular: PDFFont, bold: PDFFont): number {
   const color = finding.status === "fail" ? RED : finding.status === "warning" ? AMBER : finding.status === "pass" ? GREEN : MUTED;
   const label = safeText(findingStatusLabels[finding.status].toUpperCase());
@@ -145,6 +176,9 @@ function drawFinding(page: PDFPage, finding: Finding, y: number, observation: st
   return y;
 }
 
+/**
+ * Ajoute les mentions de portée et la numérotation sur toutes les pages du rapport.
+ */
 function addFooters(document: PDFDocument, regular: PDFFont) {
   const pages = document.getPages();
   pages.forEach((page, index) => {

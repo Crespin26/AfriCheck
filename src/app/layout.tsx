@@ -6,6 +6,9 @@ export const metadata: Metadata = {
   description: "Analysez gratuitement les protections visibles de votre site et obtenez des recommandations claires.",
 };
 
+/**
+ * Définit le document HTML commun, la langue française et l’emplacement du contenu des pages.
+ */
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="fr">

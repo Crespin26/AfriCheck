@@ -9,6 +9,9 @@ import { listScanHistory } from "@/lib/scan-history";
 const limiter = new HybridRateLimiter("domain-history", 20, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 8192;
 
+/**
+ * Autorise la consultation avec la preuve et le secret navigateur, puis retourne l’historique de ce seul domaine.
+ */
 export async function POST(request: Request) {
   const requestId = createRequestId();
   const decision = await limiter.check(requestIdentity(request));

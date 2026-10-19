@@ -1,3 +1,6 @@
+/**
+ * Teste sauvegarde et restauration sur une base temporaire, notamment le refus d’écraser des données existantes.
+ */
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -11,7 +14,7 @@ const exec = promisify(execFile);
 const directory = await mkdtemp(join(tmpdir(), "africheck-recovery-"));
 const image = (await readFile("compose.yaml", "utf8")).match(/^\s+image:\s+(postgres:\S+)/m)?.[1];
 assert.ok(image, "Image PostgreSQL introuvable dans compose.yaml.");
-// A unique Compose project without a persistent volume or host port.
+// Projet Compose unique, sans volume persistant ni port publié sur l’hôte.
 process.env.COMPOSE_FILE = join(directory, "compose.json");
 process.env.COMPOSE_PROJECT_NAME = `africheck-recovery-${randomBytes(6).toString("hex")}`;
 await writeFile(process.env.COMPOSE_FILE, JSON.stringify({ services: { database: {

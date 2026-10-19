@@ -18,10 +18,16 @@ const HTML_SIGNATURES = [
   [/(?:cdn\.shopify\.com|Shopify\.theme)/i, "Shopify"],
 ] as const;
 
+/**
+ * Retire les caractères de contrôle et limite la longueur des valeurs de technologie affichées.
+ */
 function safeValue(value: string): string {
   return value.replace(/[\u0000-\u001f\u007f<>]/g, " ").replace(/\s+/g, " ").trim().slice(0, 120);
 }
 
+/**
+ * Relève les technologies et versions exposées par les en-têtes et les indices du DOM, sans déduire de vulnérabilité.
+ */
 export function detectTechnologyExposure(headers: Headers, html: string | undefined, inspection?: HtmlInspection): Exposure[] {
   const exposures: Exposure[] = [];
   for (const [header, source] of HEADER_SIGNALS) {
@@ -39,6 +45,9 @@ export function detectTechnologyExposure(headers: Headers, html: string | undefi
   return exposures.slice(0, 5);
 }
 
+/**
+ * Transforme les empreintes détectées en constat ; l’absence d’empreinte n’accorde aucun point de protection.
+ */
 export function technologyExposureFinding(headers: Headers, html: string | undefined, inspection?: HtmlInspection): Finding {
   const exposures = detectTechnologyExposure(headers, html, inspection);
   const versioned = exposures.filter((item) => item.versioned);

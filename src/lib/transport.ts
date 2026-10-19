@@ -25,6 +25,9 @@ export type TransportOptions = {
 
 type RequiredTransportOptions = Required<TransportOptions>;
 
+/**
+ * Applique les limites de taille, de temps et de redirections ainsi que le mode de validation TLS demandé.
+ */
 function optionsWithDefaults(options: TransportOptions): RequiredTransportOptions {
   return {
     resolveAddress: options.resolveAddress ?? resolvePublicUrl,
@@ -35,6 +38,9 @@ function optionsWithDefaults(options: TransportOptions): RequiredTransportOption
   };
 }
 
+/**
+ * Convertit les en-têtes Node.js dans le format Headers utilisé par les analyseurs.
+ */
 function toHeaders(raw: IncomingHttpHeaders): Headers {
   const headers = new Headers();
   for (const [name, value] of Object.entries(raw)) {
@@ -44,6 +50,9 @@ function toHeaders(raw: IncomingHttpHeaders): Headers {
   return headers;
 }
 
+/**
+ * Lit la réponse en flux et interrompt le téléchargement dès que la limite d’octets est dépassée.
+ */
 function readBody(response: IncomingMessage, maxBodyBytes: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -61,6 +70,10 @@ function readBody(response: IncomingMessage, maxBodyBytes: number): Promise<stri
   });
 }
 
+/**
+ * Effectue un GET vers l’adresse IP contrôlée en conservant le nom d’hôte pour HTTP et TLS.
+ * Borne DNS et téléchargement ; le diagnostic peut observer un certificat invalide, contrairement au mode TLS strict.
+ */
 async function requestOnce(url: URL, options: RequiredTransportOptions): Promise<Omit<ScanResponse, "finalUrl">> {
   const started = Date.now();
   const pinned = await new Promise<ResolvedAddress>((resolve, reject) => {
@@ -118,6 +131,10 @@ async function requestOnce(url: URL, options: RequiredTransportOptions): Promise
   });
 }
 
+/**
+ * Suit un nombre borné de redirections avec un budget de temps commun et recontrôle chaque destination.
+ * Conserve les cookies et certificats des étapes pour éviter de masquer un problème derrière la réponse finale.
+ */
 export async function fetchWebsite(initial: URL, overrides: TransportOptions = {}): Promise<ScanResponse> {
   const options = optionsWithDefaults(overrides);
   if (options.requireValidTls && initial.protocol !== "https:") {

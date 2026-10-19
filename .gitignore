@@ -52,3 +52,7 @@ next-env.d.ts
 # database archives
 /backups/
 *.dump
+
+# local development instructions
+/AGENTS.md
+/CLAUDE.md

@@ -1,3 +1,6 @@
+/**
+ * Construit la CSP liée au nonce de la requête ; les permissions supplémentaires de développement restent conditionnelles.
+ */
 export function buildContentSecurityPolicy(nonce: string, development: boolean): string {
   const directives = [
     "default-src 'self'",

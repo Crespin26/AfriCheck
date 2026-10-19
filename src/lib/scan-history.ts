@@ -9,10 +9,17 @@ export type HistoryQuery = <T extends QueryResultRow>(text: string, values?: unk
 
 type HistoryRow = QueryResultRow & { id: string; scanned_at: Date | string; score: number; grade: ScanResult["grade"]; scoring_version?: string | null };
 
+/**
+ * Exécute les requêtes d’historique via le pool PostgreSQL du processus.
+ */
 function defaultQuery<T extends QueryResultRow>(text: string, values?: unknown[]) {
   return databasePool().query<T>(text, values);
 }
 
+/**
+ * Enregistre le diagnostic avec sa date d’expiration après contrôle du domaine final.
+ * Le domaine doit déjà avoir été autorisé par la route ; une redirection vers un autre domaine est refusée.
+ */
 export async function saveScanHistory(hostname: string, result: ScanResult, query: HistoryQuery = defaultQuery): Promise<string> {
   const finalHostname = new URL(result.finalUrl).hostname;
   if (hostname !== finalHostname) throw new Error("Le domaine vérifié ne correspond pas au résultat du scan.");
@@ -26,6 +33,9 @@ export async function saveScanHistory(hostname: string, result: ScanResult, quer
   return id;
 }
 
+/**
+ * Retourne les résumés non expirés d’un domaine, du plus récent au plus ancien, avec une limite bornée.
+ */
 export async function listScanHistory(hostname: string, limit = 20, query: HistoryQuery = defaultQuery): Promise<ScanHistorySummary[]> {
   const safeLimit = Math.min(50, Math.max(1, Math.trunc(limit)));
   const { rows } = await query<HistoryRow>(

@@ -5,6 +5,9 @@ declare global {
   var africheckDatabasePool: Pool | undefined;
 }
 
+/**
+ * Distingue un historique désactivé d’une configuration PostgreSQL invalide.
+ */
 export class DatabaseConfigurationError extends Error {
   constructor(public readonly code: "DATABASE_DISABLED" | "DATABASE_CONFIGURATION_INVALID") {
     super(code === "DATABASE_DISABLED" ? "L’historique n’est pas configuré." : "La configuration de l’historique est invalide.");
@@ -14,6 +17,9 @@ export class DatabaseConfigurationError extends Error {
 
 type DatabaseEnvironment = { DATABASE_URL?: string; DATABASE_SSL?: string };
 
+/**
+ * Valide l’URL PostgreSQL et le choix explicite de TLS sans ouvrir de connexion.
+ */
 export function databaseConfiguration(env?: DatabaseEnvironment): { connectionString: string; ssl: boolean } {
   const environment = env ?? { DATABASE_URL: process.env.DATABASE_URL, DATABASE_SSL: process.env.DATABASE_SSL };
   const connectionString = environment.DATABASE_URL;
@@ -26,6 +32,9 @@ export function databaseConfiguration(env?: DatabaseEnvironment): { connectionSt
   return { connectionString, ssl: environment.DATABASE_SSL === "true" };
 }
 
+/**
+ * Réutilise un pool PostgreSQL borné dans le processus et impose la validation du certificat lorsque TLS est activé.
+ */
 export function databasePool(): Pool {
   const configuration = databaseConfiguration();
   if (globalThis.africheckDatabasePool) return globalThis.africheckDatabasePool;
@@ -42,6 +51,9 @@ export function databasePool(): Pool {
   return pool;
 }
 
+/**
+ * Lit la durée de conservation de l’historique : 90 jours par défaut, entre 1 et 365 jours.
+ */
 export function historyRetentionDays(value = process.env.HISTORY_RETENTION_DAYS): number {
   if (value === undefined) return 90;
   const days = Number(value);

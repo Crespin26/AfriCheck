@@ -8,6 +8,9 @@ import { readJsonBody, RequestBodyError } from "@/lib/request-body";
 const limiter = new HybridRateLimiter("domain-verify", 10, 10 * 60 * 1000);
 const MAX_REQUEST_BYTES = 8192;
 
+/**
+ * Vérifie le fichier HTTPS publié par le propriétaire et renvoie une preuve signée liée à son navigateur.
+ */
 export async function POST(request: Request) {
   const requestId = createRequestId();
   const decision = await limiter.check(requestIdentity(request));

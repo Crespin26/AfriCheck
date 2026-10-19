@@ -1,3 +1,6 @@
+/**
+ * Sauvegarde PostgreSQL au format custom dans un nouveau fichier privé, sans exporter les compteurs temporaires de quota.
+ */
 import { open, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
 import { databaseCommand } from "./compose-database.mjs";
@@ -5,7 +8,7 @@ import { databaseCommand } from "./compose-database.mjs";
 const [destination, ...extra] = process.argv.slice(2);
 if (!destination || extra.length) throw new Error("Usage : npm run db:backup -- /chemin/sauvegarde.dump");
 const path = resolve(destination);
-// Refuse to replace an existing archive; restrict access to its owner.
+// Refuse d’écraser une archive existante et réserve son accès au propriétaire.
 const file = await open(path, "wx", 0o600);
 let complete = false;
 try {

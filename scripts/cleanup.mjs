@@ -1,3 +1,6 @@
+/**
+ * Supprime dans une même transaction les historiques et les quotas expirés, puis journalise seulement les compteurs.
+ */
 import pg from "pg";
 
 const connectionString = process.env.DATABASE_URL;
@@ -22,7 +25,7 @@ try {
   console.info(JSON.stringify({ event: "database.cleanup", historyDeleted: history.rowCount, quotasDeleted: quotas.rowCount }));
 } catch (error) {
   await client.query("ROLLBACK").catch(() => undefined);
-  // Avoid exposing connection details in scheduler logs.
+  // Ne publie pas les détails de connexion dans les journaux du planificateur.
   console.error(JSON.stringify({ event: "database.cleanup_failed", code: error?.code ?? "UNKNOWN" }));
   process.exitCode = 1;
 } finally {

@@ -9,15 +9,22 @@ declare global {
   var africheckReportKey: Buffer | undefined;
 }
 
+/**
+ * Charge la clé persistante des autorisations PDF ou crée une clé locale au processus pour les essais.
+ */
 export function reportSigningKey(value = process.env.REPORT_SIGNING_KEY): Buffer {
   if (value !== undefined) {
     if (Buffer.byteLength(value, "utf8") < 32) throw new Error("REPORT_SIGNING_KEY doit contenir au moins 32 octets.");
     return Buffer.from(value, "utf8");
   }
-  // Shared by route bundles and development reloads within this process only.
+  // Clé partagée entre les routes et les rechargements de développement dans ce seul processus.
   return globalThis.africheckReportKey ??= randomBytes(32);
 }
 
+/**
+ * Canonicalise les champs du rapport et signe leur contenu avec sa date d’expiration.
+ * La version du calcul est incluse pour empêcher sa modification après le diagnostic.
+ */
 function signature(input: ReportInput, expiresAt: number, key: Buffer): Buffer {
   const report: ReportInput = {
     ...(input.scoringVersion === 2 ? { scoringVersion: 2 as const } : {}),
@@ -35,11 +42,18 @@ function signature(input: ReportInput, expiresAt: number, key: Buffer): Buffer {
   return createHmac("sha256", key).update(JSON.stringify(["africheck-report-v1", expiresAt, report])).digest();
 }
 
+/**
+ * Autorise pendant une heure l’export du résultat produit par le serveur au moyen d’une signature HMAC.
+ */
 export function authorizeReport(input: ReportInput, key = reportSigningKey(), now = Date.now()): ReportAuthorization {
   const expiresAt = now + LIFETIME_MS;
   return { expiresAt, signature: signature(input, expiresAt, key).toString("base64url") };
 }
 
+/**
+ * Refuse une autorisation absente, expirée ou altérée avant la génération du PDF.
+ * Cette vérification protège les données reçues ; elle ne constitue pas une signature numérique du fichier PDF.
+ */
 export function verifyReportAuthorization(input: ReportInput, authorization: unknown, key = reportSigningKey(), now = Date.now()): boolean {
   if (!authorization || typeof authorization !== "object") return false;
   const candidate = authorization as Partial<ReportAuthorization>;

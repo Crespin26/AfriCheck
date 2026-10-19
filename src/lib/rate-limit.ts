@@ -4,6 +4,9 @@ export type RateLimitDecision = { allowed: boolean; limit: number; remaining: nu
 
 type Entry = { count: number; resetAt: number };
 
+/**
+ * Compteur en mémoire par identité ; les quotas ne sont pas partagés entre plusieurs processus.
+ */
 export class FixedWindowRateLimiter {
   private readonly entries = new Map<string, Entry>();
   private operations = 0;
@@ -12,6 +15,9 @@ export class FixedWindowRateLimiter {
     if (!Number.isInteger(limit) || limit < 1 || !Number.isFinite(windowMs) || windowMs < 1) throw new Error("Configuration de rate limiting invalide.");
   }
 
+  /**
+   * Compte la requête dans sa fenêtre et renvoie la décision ainsi que le délai de réessai.
+   */
   check(key: string, now = Date.now()): RateLimitDecision {
     if (++this.operations % 100 === 0) this.prune(now);
     const current = this.entries.get(key);
@@ -22,11 +28,18 @@ export class FixedWindowRateLimiter {
     return { allowed, limit: this.limit, remaining: Math.max(0, this.limit - entry.count), retryAfterSeconds: allowed ? 0 : Math.max(1, Math.ceil((entry.resetAt - now) / 1000)), resetAt: entry.resetAt };
   }
 
+  /**
+   * Supprime les fenêtres expirées pour limiter la mémoire occupée par les compteurs.
+   */
   prune(now = Date.now()): void {
     for (const [key, entry] of this.entries) if (entry.resetAt <= now) this.entries.delete(key);
   }
 }
 
+/**
+ * Utilise uniquement l’en-tête client du proxy explicitement approuvé, puis valide et normalise l’adresse IP.
+ * Sans confiance explicite dans le proxy, toutes les requêtes partagent la même identité de quota.
+ */
 export function requestIdentity(request: Request): string {
   if (process.env.TRUST_PROXY_HEADERS !== "true") return "shared";
   const header = process.env.CLIENT_IP_HEADER ?? "x-forwarded-for";
@@ -40,6 +53,9 @@ export function requestIdentity(request: Request): string {
   catch { return "unknown"; }
 }
 
+/**
+ * Expose le quota restant et son échéance, avec Retry-After lorsque la limite est atteinte.
+ */
 export function rateLimitHeaders(decision: RateLimitDecision): HeadersInit {
   return { "x-ratelimit-limit": String(decision.limit), "x-ratelimit-remaining": String(decision.remaining), "x-ratelimit-reset": String(Math.ceil(decision.resetAt / 1000)), ...(decision.retryAfterSeconds ? { "retry-after": String(decision.retryAfterSeconds) } : {}) };
 }

@@ -24,6 +24,10 @@ const limiter = new HybridRateLimiter("scan", 5, 10 * 60 * 1000);
 const scanGate = new ConcurrencyGate(scanConcurrencyLimit());
 const MAX_REQUEST_BYTES = 4096;
 
+/**
+ * Applique les quotas et la limite de concurrence, valide la preuve éventuelle, puis lance le diagnostic.
+ * Autorise son export PDF et tente de conserver l’historique uniquement pour le domaine vérifié.
+ */
 export async function POST(request: Request) {
   const started = Date.now();
   const requestId = createRequestId();
