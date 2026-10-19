@@ -9,3 +9,7 @@ tmp
 *.log
 README.md
 SECURITY.md
+
+e2e
+test-results
+playwright-report

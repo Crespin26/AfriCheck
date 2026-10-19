@@ -33,6 +33,15 @@ npm run dev
 
 Ouvrir ensuite [http://localhost:3000](http://localhost:3000).
 
+Pour démarrer la version de production locale :
+
+```bash
+npm run build
+npm start
+```
+
+`npm start` prépare les ressources statiques puis lance le serveur standalone généré. `PORT` et `HOSTNAME` permettent de choisir son port et son interface réseau.
+
 ## Vérifications
 
 ```bash
@@ -42,6 +51,16 @@ npm run build
 # ou toutes les portes de qualité :
 npm run ci
 ```
+
+Pour vérifier les parcours dans Chromium sur ordinateur et en vue mobile :
+
+```bash
+npx playwright install chromium
+npm run build
+npm run test:e2e
+```
+
+Ces tests lancent temporairement la version de production sur le port local 3100. Ils vérifient l'affichage du diagnostic, les recommandations, le téléchargement d'un vrai PDF, le refus d'une cible privée et la conservation de la preuve navigateur. Les réponses de scan et de propriété sont simulées ; aucun domaine tiers n'est analysé. Les tests PostgreSQL de `npm test` nécessitent une base dédiée, `DATABASE_URL` exportée et les migrations appliquées ; sans base, ils sont ignorés.
 
 Les mêmes contrôles sont exécutés sur chaque pull request et push vers `main`. CodeQL analyse également le code TypeScript, tandis que Dependabot propose les mises à jour npm, Docker et GitHub Actions. La CI publie un SBOM CycloneDX des dépendances de production et un rapport Trivy de l’image ; toute vulnérabilité HIGH ou CRITICAL disposant d’un correctif bloque la livraison.
 
@@ -60,7 +79,7 @@ Générez les secrets hors du dépôt (par exemple avec un gestionnaire de secre
 ### Vérification de contrôle d’un domaine
 
 1. Le navigateur génère localement un secret aléatoire de 32 octets et envoie seulement son empreinte SHA-256 base64url à `POST /api/domains/challenge` avec l’URL.
-2. L’utilisateur publie le challenge reçu à l’adresse `/.well-known/africheck-verification.txt` de son domaine.
+2. L’utilisateur publie le challenge reçu à l’adresse `/.well-known/africheck-verification.txt` de son domaine, via HTTPS avec un certificat valide. Le fichier doit être servi directement à cette adresse, sans redirection.
 3. Le navigateur transmet le challenge et son secret à `POST /api/domains/verify`. AfriCheck récupère le fichier avec les protections anti-SSRF du scanner et retourne une preuve signée valable 30 jours.
 4. Lors des visites suivantes, l’interface revalide la preuve et le secret auprès de `POST /api/domains/proof` avant d’afficher le domaine comme vérifié.
 
