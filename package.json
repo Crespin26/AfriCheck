@@ -27,7 +27,7 @@
     "pdf-lib": "^1.17.1",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8",
+    "react-dom": "19.3.1",
     "srcset": "5.0.3"
   },
   "devDependencies": {
