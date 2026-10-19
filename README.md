@@ -113,6 +113,14 @@ Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`,
 
 Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de déploiement avant de remplacer les instances. Sauvegardez régulièrement PostgreSQL et testez la restauration ; la rétention applicative ne remplace pas une politique de sauvegarde.
 
+Pour supprimer les rapports et quotas expirés même lorsqu’aucun nouveau scan n’est lancé, planifiez quotidiennement cette commande sur l’hôte de déploiement :
+
+```bash
+docker compose exec -T app node scripts/cleanup.mjs
+```
+
+Hors Docker, utilisez `npm run db:cleanup` avec `DATABASE_URL` et `DATABASE_SSL` exportées. La commande ne supprime que les lignes dont `expires_at` est dépassé ; les rapports encore valides sont conservés. Elle peut être relancée sans effet sur les données non expirées. La planification doit être configurée sur la plateforme d’hébergement.
+
 - `GET /api/health` : liveness sans dépendance externe ;
 - `GET /api/ready` : readiness du runtime, de la configuration et du schéma PostgreSQL lorsqu’il est activé ;
 - ne rendez pas directement le conteneur accessible sur Internet : placez-le derrière un proxy TLS qui remplace les en-têtes client avant d’activer `TRUST_PROXY_HEADERS=true`.

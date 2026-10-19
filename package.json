@@ -12,7 +12,8 @@
     "db:migrate": "node scripts/migrate.mjs",
     "ci": "npm test && npm run lint && npm run build",
     "test:e2e": "playwright test",
-    "prestart": "node scripts/prepare-standalone.mjs"
+    "prestart": "node scripts/prepare-standalone.mjs",
+    "db:cleanup": "node scripts/cleanup.mjs"
   },
   "dependencies": {
     "next": "^16.4.1",
