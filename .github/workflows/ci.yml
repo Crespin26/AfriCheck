@@ -116,6 +116,12 @@ jobs:
 
           curl --fail --silent --show-error http://127.0.0.1:3000/api/health | grep --fixed-strings '"status":"ok"'
           curl --fail --silent --show-error http://127.0.0.1:3000/api/ready | grep --fixed-strings '"status":"ready"'
+      - name: Set up Node.js for recovery test
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+      - name: Verify PostgreSQL backup and restore
+        run: node scripts/test-recovery.mjs
       - name: Scan container vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

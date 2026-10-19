@@ -47,3 +47,7 @@ next-env.d.ts
 # browser tests
 /playwright-report/
 /test-results/
+
+# database archives
+/backups/
+*.dump

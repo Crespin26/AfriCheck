@@ -113,6 +113,32 @@ Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`,
 
 Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de déploiement avant de remplacer les instances. Sauvegardez régulièrement PostgreSQL et testez la restauration ; la rétention applicative ne remplace pas une politique de sauvegarde.
 
+### Sauvegarde et restauration PostgreSQL
+
+Depuis le dépôt sur l’hôte Docker, avec l’environnement Compose habituel configuré et le service `database` démarré :
+
+```bash
+mkdir -p backups
+npm run db:backup -- backups/africheck-2026-10-19.dump
+npm run db:restore -- backups/africheck-2026-10-19.dump africheck_recovery
+```
+
+Choisissez un nom de fichier unique à chaque sauvegarde. Les archives sont créées avec des permissions `0600` et un fichier existant n’est jamais remplacé. Elles contiennent le schéma, les migrations et l’historique ; les compteurs temporaires des quotas sont exclus. Les dossiers `backups/` et les fichiers `.dump` sont exclus de Git et du contexte Docker.
+
+La restauration crée une **nouvelle base** : elle refuse toute destination déjà existante, y compris la base active `africheck`. Elle s’arrête à la première erreur et applique la restauration dans une transaction. Si elle échoue, la nouvelle base reste disponible pour inspection ; le script ne supprime aucune base. Vérifiez ensuite les tables, les rapports et la readiness avec une instance de test pointant sur cette nouvelle base avant de décider d’une bascule. Les secrets applicatifs ne font pas partie de l’archive et doivent être conservés séparément.
+
+Planifiez les sauvegardes sur l’hébergement, conservez une copie chiffrée hors du serveur et définissez leur durée de conservation. Le test reproductible suivant utilise un projet Docker temporaire isolé, puis supprime ses conteneurs :
+
+```bash
+npm run test:recovery
+```
+
+Il vérifie la restauration des rapports et migrations, l’exclusion des quotas, le refus d’écraser une archive ou une base et le maintien de la base source. Il est également exécuté en CI. Ces scripts ciblent l’installation Docker Compose du dépôt ; pour une base gérée, utilisez les outils de sauvegarde de la plateforme.
+
+Références : [pg_dump](https://www.postgresql.org/docs/17/app-pgdump.html) et [pg_restore](https://www.postgresql.org/docs/17/app-pgrestore.html).
+
+### Nettoyage des données expirées
+
 Pour supprimer les rapports et quotas expirés même lorsqu’aucun nouveau scan n’est lancé, planifiez quotidiennement cette commande sur l’hôte de déploiement :
 
 ```bash

@@ -13,3 +13,6 @@ SECURITY.md
 e2e
 test-results
 playwright-report
+
+backups
+*.dump
