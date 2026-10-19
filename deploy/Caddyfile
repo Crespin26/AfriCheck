@@ -1,0 +1,16 @@
+{
+	admin off
+}
+
+{$AFRICHECK_DOMAIN} {
+	encode zstd gzip
+	header -Server
+	reverse_proxy app:3000 {
+		header_up -CF-Connecting-IP
+		header_up -X-Vercel-Forwarded-For
+		header_up -Forwarded
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Host {host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}

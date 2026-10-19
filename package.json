@@ -16,7 +16,8 @@
     "db:cleanup": "node scripts/cleanup.mjs",
     "db:backup": "node scripts/backup.mjs",
     "db:restore": "node scripts/restore.mjs",
-    "test:recovery": "node scripts/test-recovery.mjs"
+    "test:recovery": "node scripts/test-recovery.mjs",
+    "test:proxy": "node scripts/test-proxy.mjs"
   },
   "dependencies": {
     "next": "^16.4.1",

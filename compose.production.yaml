@@ -1,0 +1,50 @@
+services:
+  database:
+    networks:
+      - backend
+
+  app:
+    ports: !reset []
+    environment:
+      TRUST_PROXY_HEADERS: "true"
+      CLIENT_IP_HEADER: x-forwarded-for
+    networks:
+      - edge
+      - backend
+
+  proxy:
+    image: caddy:2-alpine@sha256:d8542f48d34a9cf4e4c11a478865229840e87e4c96ea3f439101f31a5d35f75f
+    depends_on:
+      app:
+        condition: service_healthy
+    environment:
+      AFRICHECK_DOMAIN: ${AFRICHECK_DOMAIN:?AFRICHECK_DOMAIN must be set}
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - africheck_caddy_data:/data
+      - africheck_caddy_config:/config
+    networks:
+      - edge
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+networks:
+  edge:
+  backend:
+    internal: true
+
+volumes:
+  africheck_caddy_data:
+  africheck_caddy_config:

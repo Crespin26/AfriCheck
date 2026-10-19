@@ -114,6 +114,36 @@ Pour une installation autonome avec PostgreSQL, définissez `POSTGRES_PASSWORD`,
 
 Sur une plateforme gérée, exécutez `npm run db:migrate` comme tâche de déploiement avant de remplacer les instances. Sauvegardez régulièrement PostgreSQL et testez la restauration ; la rétention applicative ne remplace pas une politique de sauvegarde.
 
+### Proxy HTTPS sur un serveur Docker
+
+Le Compose de base publie le port 3000 uniquement sur `127.0.0.1` pour les essais locaux. Sur un serveur compatible Docker avec Compose 2.24.4 ou plus récent, le fichier complémentaire ajoute Caddy et retire entièrement ce port publié : seuls les ports HTTP/HTTPS du proxy sont accessibles. PostgreSQL reste sur un réseau interne auquel le proxy n’est pas connecté.
+
+Après achat du domaine, configurez son DNS vers le serveur, ouvrez les ports 80/TCP, 443/TCP et éventuellement 443/UDP, puis définissez le domaine réel et les quatre secrets persistants déjà décrits :
+
+```bash
+# Remplacer ce domaine fictif par le domaine réellement contrôlé.
+export AFRICHECK_DOMAIN=africheck.example
+export COMPOSE_FILE=compose.yaml:compose.production.yaml
+docker compose config --quiet
+docker compose up --build -d
+docker compose logs --tail=100 proxy app
+```
+
+Caddy gère les certificats publics et la redirection HTTP vers HTTPS. Ses données et certificats sont conservés dans des volumes dédiés. Le proxy remplace `X-Forwarded-For` par l’adresse de sa connexion entrante et supprime les en-têtes Cloudflare/Vercel fournis par le client. L’application n’accepte alors que `x-forwarded-for` pour les quotas. Ce montage cible un accès direct au proxy ; ajouter un CDN ou un autre proxy en amont demande une configuration de confiance spécifique.
+
+Gardez `COMPOSE_FILE` défini pour les commandes ultérieures de maintenance et de sauvegarde, afin de conserver la même configuration. Pour redémarrer le proxy après modification du Caddyfile : `docker compose restart proxy`.
+
+Une recette reproductible teste un certificat local avec sa propre autorité explicitement approuvée par le client de test, la redirection HTTPS, l’absence de ports applicatif/PostgreSQL publics, le refus du contournement des quotas par en-têtes falsifiés et la séparation des quotas de deux clients réseau :
+
+```bash
+docker build -t africheck:ci .
+npm run test:proxy
+```
+
+Le test crée un projet Compose isolé sur des ports locaux aléatoires, puis le supprime. Il ne demande aucun certificat public et n’utilise aucun domaine tiers. Il est exécuté en CI. La délivrance du certificat public et l’accessibilité depuis Internet restent à vérifier sur le domaine et l’hébergement définitifs.
+
+Références : [HTTPS automatique Caddy](https://caddyserver.com/docs/automatic-https), [en-têtes du reverse proxy](https://caddyserver.com/docs/caddyfile/directives/reverse_proxy) et [fusion des fichiers Compose](https://docs.docker.com/reference/compose-file/merge/).
+
 ### Sauvegarde et restauration PostgreSQL
 
 Depuis le dépôt sur l’hôte Docker, avec l’environnement Compose habituel configuré et le service `database` démarré :

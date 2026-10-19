@@ -86,11 +86,14 @@ jobs:
         run: docker build --check .
       - name: Validate Compose deployment
         env:
+          AFRICHECK_DOMAIN: africheck.example
           POSTGRES_PASSWORD: ci_database_password
           DOMAIN_VERIFICATION_KEY: ci-domain-verification-key-at-least-32
           REPORT_SIGNING_KEY: ci-report-signing-key-at-least-32-chars
           LOG_HASH_KEY: ci-log-pseudonymization-key-at-least-32
-        run: docker compose config --quiet
+        run: |
+          docker compose config --quiet
+          docker compose -f compose.yaml -f compose.production.yaml config --quiet
       - name: Build container image
         run: docker build --tag africheck:ci .
       - name: Smoke test hardened container
@@ -120,6 +123,8 @@ jobs:
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
+      - name: Verify HTTPS proxy and client quotas
+        run: node scripts/test-proxy.mjs africheck:ci
       - name: Verify PostgreSQL backup and restore
         run: node scripts/test-recovery.mjs
       - name: Scan container vulnerabilities
